@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>openHome</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0c0f;
+    --surface:   #10141a;
+    --border:    #1e2530;
+    --border2:   #2a3340;
+    --text:      #c8d4e0;
+    --muted:     #4a5a6a;
+    --accent:    #00d4ff;
+    --green:     #00e676;
+    --yellow:    #ffd740;
+    --red:       #ff3d57;
+    --orange:    #ff6d00;
+    --mono:      'Share Tech Mono', monospace;
+    --sans:      'Barlow Condensed', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCAN LINES overlay ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.06) 2px,
+      rgba(0,0,0,0.06) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  .logo h1 {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  .logo span {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    letter-spacing: 0.05em;
+  }
+
+  .header-right {
+    display: flex; align-items: center; gap: 20px;
+  }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s infinite;
+  }
+
+  .status-dot.offline { background: var(--red); animation: none; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .hub-ip {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── LAYOUT ── */
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 28px;
+  }
+
+  /* ── SECTION LABEL ── */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── STAT ROW ── */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 16px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+  }
+
+  .stat-card.green::before { background: var(--green); }
+  .stat-card.yellow::before { background: var(--yellow); }
+  .stat-card.red::before { background: var(--red); }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 32px;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+  }
+
+  /* ── DEVICE GRID ── */
+  .device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+
+  .device-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 18px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    position: relative;
+    animation: card-in 0.4s ease both;
+  }
+
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .device-card:hover {
+    border-color: var(--border2);
+    transform: translateY(-1px);
+  }
+
+  .device-card.alert-state {
+    border-color: var(--red);
+    animation: card-in 0.4s ease both, alert-flash 1s ease infinite;
+  }
+
+  @keyframes alert-flash {
+    0%, 100% { border-color: var(--red); }
+    50% { border-color: rgba(255,61,87,0.2); }
+  }
+
+  .device-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 12px;
+  }
+
+  .device-icon { font-size: 22px; line-height: 1; }
+
+  .device-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .badge-ok     { background: rgba(0,230,118,0.12); color: var(--green); }
+  .badge-alert  { background: rgba(255,61,87,0.15);  color: var(--red);   }
+  .badge-warn   { background: rgba(255,215,64,0.12); color: var(--yellow);}
+  .badge-off    { background: rgba(74,90,106,0.2);   color: var(--muted); }
+  .badge-on     { background: rgba(0,212,255,0.12);  color: var(--accent);}
+
+  .device-name {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .device-location {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+  }
+
+  .device-data {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+
+  .data-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 4px;
+  }
+
+  .data-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .data-val {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+  }
+
+  .data-val.green  { color: var(--green); }
+  .data-val.red    { color: var(--red); }
+  .data-val.yellow { color: var(--yellow); }
+  .data-val.accent { color: var(--accent); }
+
+  /* Controls inside card */
+  .card-controls {
+    margin-top: 12px;
+    display: flex; gap: 6px;
+  }
+
+  .ctrl-btn {
+    flex: 1;
+    background: var(--border);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 6px 8px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.1s, color 0.1s;
+  }
+
+  .ctrl-btn:hover { background: var(--border2); }
+  .ctrl-btn.primary { border-color: var(--accent); color: var(--accent); }
+  .ctrl-btn.danger  { border-color: var(--red);    color: var(--red); }
+
+  /* ── LAST SEEN indicator ── */
+  .last-seen {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  .panel-body { padding: 12px 16px; }
+
+  /* Alert feed */
+  .alert-feed { max-height: 380px; overflow-y: auto; }
+  .alert-feed::-webkit-scrollbar { width: 3px; }
+  .alert-feed::-webkit-scrollbar-track { background: var(--bg); }
+  .alert-feed::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  .alert-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    animation: alert-in 0.3s ease;
+  }
+
+  @keyframes alert-in {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  .alert-item:last-child { border-bottom: none; }
+
+  .alert-type {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 3px;
+  }
+
+  .alert-type.critical { color: var(--red); }
+  .alert-type.high     { color: var(--orange); }
+  .alert-type.medium   { color: var(--yellow); }
+  .alert-type.low      { color: var(--muted); }
+
+  .alert-detail {
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .alert-time {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+  }
+
+  /* Quick controls panel */
+  .quick-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .quick-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 10px 8px;
+    cursor: pointer;
+    text-align: center;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+
+  .quick-btn:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
+  .quick-btn .q-icon { font-size: 18px; }
+
+  /* Color picker for lights */
+  .color-row {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+  }
+
+  .color-swatch {
+    width: 24px; height: 24px;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.1s, transform 0.1s;
+  }
+
+  .color-swatch:hover { transform: scale(1.2); border-color: var(--text); }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .empty-state .e-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.4; }
+
+  /* Panic overlay */
+  .panic-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(255,61,87,0.15);
+    z-index: 200;
+    align-items: center; justify-content: center;
+    animation: panic-bg 0.5s ease infinite alternate;
+  }
+
+  .panic-overlay.active { display: flex; }
+
+  @keyframes panic-bg {
+    from { background: rgba(255,61,87,0.1); }
+    to   { background: rgba(255,61,87,0.25); }
+  }
+
+  .panic-box {
+    background: var(--surface);
+    border: 2px solid var(--red);
+    padding: 40px;
+    text-align: center;
+    max-width: 400px;
+  }
+
+  .panic-box h2 {
+    font-family: var(--mono);
+    font-size: 28px;
+    color: var(--red);
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+  }
+
+  .panic-box p {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    margin-bottom: 20px;
+  }
+
+  .panic-dismiss {
+    background: var(--red);
+    color: white;
+    border: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    padding: 12px 24px;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+
+  /* No data / loading */
+  .skeleton {
+    background: linear-gradient(90deg, var(--border) 25%, var(--border2) 50%, var(--border) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 2px;
+    height: 12px;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ── AI COMMAND ── */
+  .ai-suggestions {
+    display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;
+  }
+
+  .ai-chip {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 3px 8px;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    transition: all 0.15s;
+    border-radius: 2px;
+  }
+
+  .ai-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  .ai-input-row {
+    display: flex; gap: 6px;
+  }
+
+  .ai-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .ai-input:focus { border-color: var(--accent); }
+  .ai-input::placeholder { color: var(--muted); }
+
+  .ai-send {
+    background: var(--accent);
+    border: none;
+    color: var(--bg);
+    font-size: 13px;
+    width: 36px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .ai-send:hover { opacity: 0.8; }
+  .ai-send:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .ai-response {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.6;
+  }
+
+  .ai-response.ok    { border-color: var(--green); color: var(--green); }
+  .ai-response.error { border-color: var(--red);   color: var(--red); }
+  .ai-response.busy  { border-color: var(--accent); color: var(--accent); }
+
+  /* AI log entries */
+  .ai-log-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    animation: alert-in 0.3s ease;
+  }
+
+  .ai-log-item:last-child { border-bottom: none; }
+
+  .ai-log-event {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    margin-bottom: 3px;
+  }
+
+  .ai-log-actions {
+    font-size: 11px;
+    color: var(--text);
+    margin-bottom: 3px;
+  }
+
+  .ai-log-time {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+  }
+
+  /* ── SETTINGS GEAR + MODAL ── */
+  .settings-gear {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    width: 32px; height: 32px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .settings-gear:hover { color: var(--accent); border-color: var(--accent); transform: rotate(60deg); }
+
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 300;
+    align-items: center; justify-content: center;
+    backdrop-filter: blur(2px);
+  }
+  .modal-backdrop.active { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    width: 90%; max-width: 520px;
+    max-height: 85vh;
+    display: flex; flex-direction: column;
+    animation: modal-in 0.2s ease;
+  }
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.96) translateY(10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+  }
+  .modal-close {
+    background: none; border: none; color: var(--muted);
+    font-size: 16px; cursor: pointer;
+  }
+  .modal-close:hover { color: var(--red); }
+
+  .modal-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    flex: 1;
+    background: none; border: none;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    padding: 12px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .modal-body {
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .modal-body::-webkit-scrollbar { width: 4px; }
+  .modal-body::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  .field { margin-bottom: 14px; flex: 1; }
+  .field label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 9px 11px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+
+  .field-row { display: flex; gap: 12px; }
+
+  .toggle-row {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--text);
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+  .toggle-row input { width: auto; cursor: pointer; }
+
+  .save-btn {
+    width: 100%;
+    background: var(--accent);
+    border: none;
+    color: var(--bg);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    padding: 11px;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: opacity 0.15s;
+  }
+  .save-btn:hover { opacity: 0.85; }
+
+  .add-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .users-list, .memory-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .user-item, .mem-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 10px 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .user-info, .mem-info { flex: 1; }
+  .user-name {
+    font-size: 14px; font-weight: 600; color: var(--text);
+  }
+  .user-meta, .mem-meta {
+    font-family: var(--mono); font-size: 9px; color: var(--muted);
+    letter-spacing: 0.08em; margin-top: 2px;
+  }
+  .mem-text { font-size: 12px; color: var(--text); }
+  .role-badge {
+    font-family: var(--mono); font-size: 8px;
+    padding: 2px 6px; border-radius: 2px; text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .role-admin  { background: rgba(0,212,255,0.15); color: var(--accent); }
+  .role-member { background: rgba(0,230,118,0.12); color: var(--green); }
+  .role-guest  { background: rgba(74,90,106,0.2);  color: var(--muted); }
+  .del-btn {
+    background: none; border: 1px solid var(--border2); color: var(--muted);
+    font-size: 11px; cursor: pointer; padding: 3px 8px; border-radius: 2px;
+    margin-left: 8px;
+  }
+  .del-btn:hover { border-color: var(--red); color: var(--red); }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .stat-row  { grid-template-columns: repeat(2, 1fr); }
+    .sidebar   { order: -1; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── SETTINGS MODAL ── -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="settingsTitle">SETTINGS</span>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab active" onclick="switchTab('system', this)">SYSTEM</button>
+      <button class="tab" onclick="switchTab('users', this)">USERS</button>
+      <button class="tab" onclick="switchTab('memory', this)">AI MEMORY</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- SYSTEM TAB -->
+      <div class="tab-pane active" id="tab-system">
+        <div class="field">
+          <label>AI ASSISTANT NAME</label>
+          <input type="text" id="setAiName" placeholder="NOVA">
+        </div>
+        <div class="field">
+          <label>MODEL (Ollama tag)</label>
+          <input type="text" id="setModel" placeholder="llama3.1:1b">
+        </div>
+        <div class="field">
+          <label>NTFY TOPIC (push notifications)</label>
+          <input type="text" id="setNtfy" placeholder="openhome-alerts">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>NIGHT START (hr)</label>
+            <input type="number" id="setNightStart" min="0" max="23" placeholder="22">
+          </div>
+          <div class="field">
+            <label>NIGHT END (hr)</label>
+            <input type="number" id="setNightEnd" min="0" max="23" placeholder="6">
+          </div>
+        </div>
+        <label class="toggle-row">
+          <input type="checkbox" id="setAutoArm">
+          <span>Auto-arm security at night</span>
+        </label>
+        <button class="save-btn" onclick="saveSettings()">SAVE SYSTEM SETTINGS</button>
+      </div>
+
+      <!-- USERS TAB -->
+      <div class="tab-pane" id="tab-users">
+        <div id="usersList" class="users-list"></div>
+        <div class="add-section">
+          <div class="section-label" style="margin-bottom:10px;">ADD USER</div>
+          <div class="field-row">
+            <div class="field">
+              <label>NAME</label>
+              <input type="text" id="newUserName" placeholder="Name">
+            </div>
+            <div class="field">
+              <label>ROLE</label>
+              <select id="newUserRole">
+                <option value="admin">Admin</option>
+                <option value="member" selected>Member</option>
+                <option value="guest">Guest</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label>RFID UID (optional)</label>
+              <input type="text" id="newUserRfid" placeholder="A1B2C3D4">
+            </div>
+            <div class="field">
+              <label>PREFERRED TEMP (°F)</label>
+              <input type="number" id="newUserTemp" value="72" min="50" max="90">
+            </div>
+          </div>
+          <button class="save-btn" onclick="addUser()">ADD USER</button>
+        </div>
+      </div>
+
+      <!-- MEMORY TAB -->
+      <div class="tab-pane" id="tab-memory">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:12px;">
+          Things the AI remembers about your household. Used to personalize decisions.
+        </div>
+        <div id="memoryList" class="memory-list"></div>
+        <div class="add-section">
+          <div class="section-label" style="margin-bottom:10px;">TEACH THE AI</div>
+          <div class="field">
+            <label>FACT / PREFERENCE / ROUTINE</label>
+            <input type="text" id="newMemText" placeholder="e.g. We have a dog named Max, ignore low motion">
+          </div>
+          <div class="field">
+            <label>CATEGORY</label>
+            <select id="newMemCategory">
+              <option value="preference">Preference</option>
+              <option value="routine">Routine</option>
+              <option value="person">Person/Pet</option>
+              <option value="fact">Fact</option>
+              <option value="general">General</option>
+            </select>
+          </div>
+          <button class="save-btn" onclick="addMemory()">REMEMBER THIS</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── PANIC OVERLAY ── -->
+<div class="panic-overlay" id="panicOverlay">
+  <div class="panic-box">
+    <h2>⚠ PANIC ALERT</h2>
+    <p id="panicLocation">Location unknown</p>
+    <p style="color:var(--text);font-size:14px;margin-bottom:20px;">
+      Panic button activated. All lights set to alert mode.
+    </p>
+    <button class="panic-dismiss" onclick="dismissPanic()">ACKNOWLEDGE &amp; DISMISS</button>
+  </div>
+</div>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏠</div>
+    <div>
+      <h1>openHome</h1>
+      <span>LOCAL AI SMART HOME SYSTEM</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="hub-ip" id="hubIpDisplay">HUB: —</div>
+    <div class="status-pill">
+      <div class="status-dot" id="connDot"></div>
+      <span id="connLabel">CONNECTING</span>
+    </div>
+    <div class="status-pill" style="color:var(--muted);font-size:10px;" id="clockEl"></div>
+    <button class="settings-gear" onclick="openSettings()" title="Settings">⚙</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ── STAT ROW ── -->
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-label">DEVICES ONLINE</div>
+      <div class="stat-value" id="statDevices">—</div>
+      <div class="stat-sub">registered nodes</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">SYSTEM STATUS</div>
+      <div class="stat-value" id="statStatus" style="font-size:20px;padding-top:6px;">—</div>
+      <div class="stat-sub" id="statSub">checking...</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="stat-label">ACTIVE ALERTS</div>
+      <div class="stat-value" id="statAlerts">—</div>
+      <div class="stat-sub">last 24 hours</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">SNAPSHOTS</div>
+      <div class="stat-value" id="statSnaps">—</div>
+      <div class="stat-sub">doorbell captures</div>
+    </div>
+  </div>
+
+  <!-- ── MAIN GRID ── -->
+  <div class="main-grid">
+
+    <!-- DEVICES -->
+    <div>
+      <div class="section-label">DEVICE NODES</div>
+      <div class="device-grid" id="deviceGrid">
+        <!-- Skeleton placeholders -->
+        <div class="device-card">
+          <div class="skeleton" style="width:60%;margin-bottom:8px;"></div>
+          <div class="skeleton" style="width:40%;height:8px;margin-bottom:16px;"></div>
+          <div class="skeleton" style="height:8px;margin-bottom:6px;"></div>
+          <div class="skeleton" style="height:8px;width:70%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- Quick Controls -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>QUICK CONTROLS</span>
+        </div>
+        <div class="panel-body">
+          <div class="quick-grid">
+            <button class="quick-btn" onclick="allLights('off')">
+              <span class="q-icon">💡</span>ALL LIGHTS OFF
+            </button>
+            <button class="quick-btn" onclick="allLights('on')">
+              <span class="q-icon">✨</span>ALL LIGHTS ON
+            </button>
+            <button class="quick-btn" onclick="allLights('alert')">
+              <span class="q-icon">🚨</span>ALARM MODE
+            </button>
+            <button class="quick-btn" onclick="allLights('rainbow')">
+              <span class="q-icon">🌈</span>PARTY MODE
+            </button>
+          </div>
+
+          <div style="margin-top:14px;">
+            <div class="section-label" style="margin-bottom:8px;">LIGHT COLOR</div>
+            <div class="color-row">
+              <div class="color-swatch" style="background:#FFFFFF" onclick="setAllColor('#FFFFFF')" title="White"></div>
+              <div class="color-swatch" style="background:#FFD740" onclick="setAllColor('#FFD740')" title="Warm"></div>
+              <div class="color-swatch" style="background:#FF6D00" onclick="setAllColor('#FF6D00')" title="Orange"></div>
+              <div class="color-swatch" style="background:#FF3D57" onclick="setAllColor('#FF3D57')" title="Red"></div>
+              <div class="color-swatch" style="background:#00E676" onclick="setAllColor('#00E676')" title="Green"></div>
+              <div class="color-swatch" style="background:#00D4FF" onclick="setAllColor('#00D4FF')" title="Cyan"></div>
+              <div class="color-swatch" style="background:#7C4DFF" onclick="setAllColor('#7C4DFF')" title="Purple"></div>
+              <div class="color-swatch" style="background:#FF4081" onclick="setAllColor('#FF4081')" title="Pink"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alert Feed -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>ALERT FEED</span>
+          <span id="alertCount" style="color:var(--red);">0</span>
+        </div>
+        <div class="alert-feed panel-body" id="alertFeed">
+          <div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No alerts yet.</div>
+        </div>
+      </div>
+
+      <!-- Access Log -->
+      <div class="panel">
+        <div class="panel-header">ACCESS LOG</div>
+        <div class="panel-body alert-feed" id="accessLog" style="max-height:200px;">
+          <div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No scans recorded.</div>
+        </div>
+      </div>
+
+      <!-- AI Command -->
+      <div class="panel">
+        <div class="panel-header">
+          <span>AI COMMAND</span>
+          <span style="color:var(--accent);font-size:9px;" id="aiStatus">● LLAMA 1B</span>
+        </div>
+        <div class="panel-body">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;">
+            Natural language commands
+          </div>
+          <div class="ai-suggestions">
+            <span class="ai-chip" onclick="sendAICmd(this)">good morning</span>
+            <span class="ai-chip" onclick="sendAICmd(this)">lock everything down</span>
+            <span class="ai-chip" onclick="sendAICmd(this)">movie mode</span>
+            <span class="ai-chip" onclick="sendAICmd(this)">all lights off</span>
+            <span class="ai-chip" onclick="sendAICmd(this)">goodnight</span>
+          </div>
+          <div class="ai-input-row">
+            <input
+              id="aiInput"
+              class="ai-input"
+              type="text"
+              placeholder="tell the house what to do..."
+              onkeydown="if(event.key==='Enter') submitAICmd()"
+            />
+            <button class="ai-send" onclick="submitAICmd()" id="aiSendBtn">▶</button>
+          </div>
+          <div id="aiResponse" class="ai-response" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- AI Reasoning Log -->
+      <div class="panel">
+        <div class="panel-header">AI REASONING LOG</div>
+        <div class="panel-body alert-feed" id="aiLog" style="max-height:260px;">
+          <div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No AI activity yet.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────
+// Change HUB_URL to your Pi's IP when deploying
+const HUB_URL = 'http://192.168.1.100:8765';
+const POLL_INTERVAL = 3000; // ms
+
+// ── API KEY ───────────────────────────────────────────────
+// The key is NOT hardcoded. It's kept in sessionStorage so it isn't
+// saved to disk and clears when you close the tab. Prompted once.
+// Must match the hub's secrets_config.py API_KEY.
+let API_KEY = sessionStorage.getItem('openhome_key') || '';
+
+function ensureKey() {
+  if (!API_KEY) {
+    API_KEY = prompt('Enter your openHome API key (from gen_keys.py):') || '';
+    if (API_KEY) sessionStorage.setItem('openhome_key', API_KEY);
+  }
+  return API_KEY;
+}
+
+function clearKey() {
+  API_KEY = '';
+  sessionStorage.removeItem('openhome_key');
+}
+
+// Wrap fetch so every call to the hub (or any device) carries the key.
+// Intercepts requests to HUB_URL and to device IPs (http://192.168.*/control).
+const _origFetch = window.fetch.bind(window);
+window.fetch = function(url, opts = {}) {
+  const u = typeof url === 'string' ? url : url.url;
+  const isHub    = u && u.startsWith(HUB_URL);
+  const isDevice = u && /^http:\/\/[\d.]+\/control/.test(u);
+  if (isHub || isDevice) {
+    opts.headers = Object.assign({}, opts.headers, { 'X-OpenHome-Key': API_KEY });
+  }
+  return _origFetch(url, opts).then(resp => {
+    if (resp.status === 401) {
+      // Key wrong/missing — clear it so the next action re-prompts
+      clearKey();
+      console.warn('openHome: 401 unauthorized — API key cleared, will re-prompt');
+    }
+    return resp;
+  });
+};
+
+// ── STATE ─────────────────────────────────────────────────
+let lastDevices = {};
+let knownAlerts = 0;
+let panicActive = false;
+
+// ── CLOCK ─────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clockEl').textContent =
+    now.toLocaleTimeString('en-US', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+document.getElementById('hubIpDisplay').textContent = 'HUB: ' + HUB_URL.replace('http://', '');
+
+// Prompt for the key on first load before polling starts.
+ensureKey();
+
+// ── POLL HUB ──────────────────────────────────────────────
+async function poll() {
+  try {
+    const [root, alertsRes, accessRes] = await Promise.all([
+      fetch(HUB_URL + '/').then(r => r.json()),
+      fetch(HUB_URL + '/alerts?limit=30').then(r => r.json()),
+      fetch(HUB_URL + '/access_log?limit=20').then(r => r.json()),
+    ]);
+    const devicesRes = await fetch(HUB_URL + '/devices').then(r => r.json());
+
+    setConnected(true);
+    updateStats(root, alertsRes);
+    renderDevices(devicesRes);
+    renderAlerts(alertsRes);
+    renderAccessLog(accessRes);
+    checkPanic(alertsRes);
+
+  } catch (e) {
+    setConnected(false);
+    console.warn('Hub unreachable:', e.message);
+  }
+}
+
+// ── CONNECTION STATUS ──────────────────────────────────────
+function setConnected(ok) {
+  const dot   = document.getElementById('connDot');
+  const label = document.getElementById('connLabel');
+  dot.className   = 'status-dot' + (ok ? '' : ' offline');
+  label.textContent = ok ? 'ONLINE' : 'OFFLINE';
+}
+
+// ── STATS ─────────────────────────────────────────────────
+function updateStats(root, alerts) {
+  document.getElementById('statDevices').textContent = root.devices ?? '—';
+  document.getElementById('statAlerts').textContent  = alerts.length ?? '—';
+  document.getElementById('statSnaps').textContent   = root.snapshots ?? '—';
+
+  const critAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'high');
+  if (critAlerts.length > 0) {
+    document.getElementById('statStatus').textContent = 'ALERT';
+    document.getElementById('statStatus').style.color = 'var(--red)';
+    document.getElementById('statSub').textContent = critAlerts.length + ' critical event(s)';
+  } else {
+    document.getElementById('statStatus').textContent = 'SECURE';
+    document.getElementById('statStatus').style.color = 'var(--green)';
+    document.getElementById('statSub').textContent = 'all systems nominal';
+  }
+}
+
+// ── DEVICES ───────────────────────────────────────────────
+const DEVICE_META = {
+  door_sensor:    { icon: '🚪', label: 'Door Sensor' },
+  motion_sensor:  { icon: '👁', label: 'Motion Sensor' },
+  flood_sensor:   { icon: '💧', label: 'Flood Sensor' },
+  smoke_co_sensor:{ icon: '🔥', label: 'Smoke/CO' },
+  climate_monitor:{ icon: '🌡', label: 'Climate' },
+  thermostat:     { icon: '🎛', label: 'Thermostat' },
+  air_quality:    { icon: '🌬', label: 'Air Quality' },
+  smart_plug:     { icon: '🔌', label: 'Smart Plug' },
+  rgb_strip:      { icon: '💡', label: 'RGB Lights' },
+  rfid_lock:      { icon: '🔑', label: 'RFID Lock' },
+  doorbell:       { icon: '🔔', label: 'Doorbell' },
+  garage_door:    { icon: '🏠', label: 'Garage Door' },
+  panic_button:   { icon: '🚨', label: 'Panic Button' },
+};
+
+function renderDevices(devices) {
+  const grid = document.getElementById('deviceGrid');
+  const ids = Object.keys(devices);
+
+  if (ids.length === 0) {
+    grid.innerHTML = `<div class="empty-state">
+      <div class="e-icon">📡</div>
+      No devices registered yet.<br>Flash firmware to your ESP32s and they'll appear here.
+    </div>`;
+    return;
+  }
+
+  // Build cards
+  grid.innerHTML = ids.map(id => buildCard(id, devices[id])).join('');
+}
+
+function buildCard(id, d) {
+  const meta     = DEVICE_META[d.type] || { icon: '📟', label: d.type };
+  const lastSeen = d.last_seen ? timeSince(d.last_seen) : 'unknown';
+  const isAlert  = isAlertState(d);
+
+  let badge = '', badgeClass = '';
+  let dataRows = '';
+  let controls = '';
+
+  // ── Per-type rendering ────────────────────────────────
+  const t = d.type;
+
+  if (t === 'door_sensor') {
+    const open = d.state === 'open';
+    badge = open ? 'OPEN' : 'CLOSED';
+    badgeClass = open ? 'badge-alert' : 'badge-ok';
+    dataRows = row('STATE', d.state?.toUpperCase(), open ? 'red' : 'green')
+             + row('BOOTS', d.boot_count ?? '—');
+  }
+  else if (t === 'motion_sensor') {
+    badge = 'MOTION'; badgeClass = 'badge-warn';
+    dataRows = row('TRIGGERS', d.trigger_count ?? '—', 'yellow')
+             + row('BOOTS', d.boot_count ?? '—');
+  }
+  else if (t === 'flood_sensor') {
+    const wet = d.state === 'wet';
+    badge = wet ? 'WET' : 'DRY';
+    badgeClass = wet ? 'badge-alert' : 'badge-ok';
+    dataRows = row('MOISTURE', (d.moisture_pct ?? '—') + '%', wet ? 'red' : 'green')
+             + row('STATE', d.state?.toUpperCase());
+  }
+  else if (t === 'smoke_co_sensor') {
+    const sev = d.severity || 'low';
+    badge = sev.toUpperCase(); badgeClass = sev === 'critical' ? 'badge-alert' : 'badge-warn';
+    dataRows = row('SMOKE', d.smoke_alert ? 'YES' : 'NO', d.smoke_alert ? 'red' : 'green')
+             + row('CO', d.co_alert ? 'YES' : 'NO', d.co_alert ? 'red' : 'green')
+             + row('SMOKE %', (d.smoke_pct ?? '—') + '%')
+             + row('CO %', (d.co_pct ?? '—') + '%');
+  }
+  else if (t === 'climate_monitor') {
+    const comfort = d.comfort || 'comfortable';
+    badge = comfort.toUpperCase();
+    badgeClass = comfort === 'alert' ? 'badge-alert' : comfort === 'uncomfortable' ? 'badge-warn' : 'badge-ok';
+    dataRows = row('TEMP', d.temp_f ? d.temp_f.toFixed(1) + '°F' : '—', 'accent')
+             + row('HUMIDITY', d.humidity ? d.humidity.toFixed(1) + '%' : '—');
+  }
+  else if (t === 'air_quality') {
+    const lbl = d.aqi_label || 'GOOD';
+    badge = lbl; badgeClass = lbl === 'GOOD' ? 'badge-ok' : lbl === 'MODERATE' ? 'badge-warn' : 'badge-alert';
+    dataRows = row('AQI', (d.aqi_pct ?? '—') + '%', lbl === 'GOOD' ? 'green' : 'yellow')
+             + row('LEVEL', lbl);
+  }
+  else if (t === 'thermostat') {
+    const action = d.action || 'idle';
+    badge = (d.mode || 'auto').toUpperCase();
+    badgeClass = action === 'heating' ? 'badge-warn' : action === 'cooling' ? 'badge-on' : 'badge-ok';
+    dataRows = row('CURRENT', d.temp_f ? d.temp_f.toFixed(0) + '°F' : '—', 'accent')
+             + row('TARGET', d.setpoint ? d.setpoint.toFixed(0) + '°F' : '—')
+             + row('ACTION', action.toUpperCase(),
+                 action === 'heating' ? 'yellow' : action === 'cooling' ? 'accent' : 'muted')
+             + row('HUMIDITY', d.humidity ? d.humidity.toFixed(0) + '%' : '—');
+    controls = `
+      <div class="card-controls">
+        <button class="ctrl-btn" onclick="thermostatAdjust('${id}',-1)">− TEMP</button>
+        <button class="ctrl-btn" onclick="thermostatAdjust('${id}',1)">+ TEMP</button>
+      </div>
+      <div class="card-controls" style="margin-top:6px;">
+        <button class="ctrl-btn" onclick="thermostatMode('${id}','heat')">HEAT</button>
+        <button class="ctrl-btn" onclick="thermostatMode('${id}','cool')">COOL</button>
+        <button class="ctrl-btn primary" onclick="thermostatMode('${id}','auto')">AUTO</button>
+        <button class="ctrl-btn" onclick="thermostatMode('${id}','off')">OFF</button>
+      </div>`;
+  }
+  else if (t === 'smart_plug') {
+    const on = d.state === 'on';
+    badge = on ? 'ON' : 'OFF'; badgeClass = on ? 'badge-on' : 'badge-off';
+    dataRows = row('STATE', on ? 'POWERED' : 'OFF', on ? 'accent' : 'red')
+             + row('IP', d.ip || '—');
+    controls = `
+      <div class="card-controls">
+        <button class="ctrl-btn primary" onclick="controlDevice('${id}','on')">ON</button>
+        <button class="ctrl-btn" onclick="controlDevice('${id}','off')">OFF</button>
+        <button class="ctrl-btn" onclick="controlDevice('${id}','toggle')">TOGGLE</button>
+      </div>`;
+  }
+  else if (t === 'rgb_strip') {
+    const on = d.state !== 'off';
+    badge = (d.mode || 'off').toUpperCase(); badgeClass = on ? 'badge-on' : 'badge-off';
+    dataRows = row('MODE', d.mode?.toUpperCase() || '—', 'accent')
+             + row('IP', d.ip || '—');
+    controls = `
+      <div class="card-controls">
+        <button class="ctrl-btn primary" onclick="controlDevice('${id}','on')">ON</button>
+        <button class="ctrl-btn" onclick="controlDevice('${id}','off')">OFF</button>
+        <button class="ctrl-btn" onclick="setLightMode('${id}','rainbow')">🌈</button>
+        <button class="ctrl-btn" onclick="setLightMode('${id}','fire')">🔥</button>
+      </div>`;
+  }
+  else if (t === 'rfid_lock') {
+    const auth = d.authorized;
+    badge = d.result?.toUpperCase() || 'READY'; badgeClass = auth ? 'badge-ok' : 'badge-warn';
+    dataRows = row('LAST UID', d.uid || '—', 'accent')
+             + row('RESULT', d.result?.toUpperCase() || '—', auth ? 'green' : 'red');
+  }
+  else if (t === 'doorbell') {
+    badge = 'RING'; badgeClass = 'badge-warn';
+    dataRows = row('RINGS', d.ring_count ?? '—', 'yellow')
+             + row('PHOTO', d.has_photo ? 'YES' : 'NO', d.has_photo ? 'green' : 'muted');
+    if (d.has_photo) {
+      controls = `<div class="card-controls">
+        <button class="ctrl-btn primary" onclick="viewSnapshot('${id}')">VIEW SNAPSHOT</button>
+      </div>`;
+    }
+  }
+  else if (t === 'garage_door') {
+    const open = d.state === 'open';
+    badge = open ? 'OPEN' : 'CLOSED'; badgeClass = open ? 'badge-warn' : 'badge-ok';
+    dataRows = row('DOOR', d.state?.toUpperCase(), open ? 'yellow' : 'green')
+             + row('CAR', d.car_present ? 'PRESENT' : 'EMPTY', d.car_present ? 'accent' : 'muted');
+    controls = `<div class="card-controls">
+      <button class="ctrl-btn primary" onclick="controlDevice('${id}','toggle')">TOGGLE</button>
+      <button class="ctrl-btn" onclick="controlDevice('${id}','close')">CLOSE</button>
+    </div>`;
+  }
+  else if (t === 'panic_button') {
+    const panic = d.state === 'panic';
+    badge = panic ? 'PANIC' : 'ARMED'; badgeClass = panic ? 'badge-alert' : 'badge-ok';
+    dataRows = row('STATE', d.state?.toUpperCase(), panic ? 'red' : 'green')
+             + row('COUNT', d.panic_count ?? '—', panic ? 'red' : 'muted');
+  }
+
+  return `
+    <div class="device-card ${isAlert ? 'alert-state' : ''}" id="card-${id}">
+      <div class="device-header">
+        <div class="device-icon">${meta.icon}</div>
+        <div class="device-badge ${badgeClass}">${badge}</div>
+      </div>
+      <div class="device-name">${meta.label}</div>
+      <div class="device-location">${d.location || id}</div>
+      <div class="device-data">${dataRows}</div>
+      ${controls}
+      <div class="last-seen">LAST SEEN: ${lastSeen}</div>
+    </div>`;
+}
+
+function row(key, val, colorClass = '') {
+  return `<div class="data-row">
+    <span class="data-key">${key}</span>
+    <span class="data-val ${colorClass}">${val ?? '—'}</span>
+  </div>`;
+}
+
+function isAlertState(d) {
+  if (d.type === 'panic_button' && d.state === 'panic') return true;
+  if (d.type === 'smoke_co_sensor' && (d.smoke_alert || d.co_alert)) return true;
+  if (d.type === 'flood_sensor' && d.alert) return true;
+  return false;
+}
+
+// ── ALERTS ────────────────────────────────────────────────
+function renderAlerts(alerts) {
+  document.getElementById('alertCount').textContent = alerts.length;
+  const feed = document.getElementById('alertFeed');
+  if (alerts.length === 0) {
+    feed.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No alerts.</div>';
+    return;
+  }
+  feed.innerHTML = [...alerts].reverse().map(a => `
+    <div class="alert-item">
+      <div class="alert-type ${a.severity}">${(a.type || '').replace(/_/g,' ').toUpperCase()} · ${a.severity?.toUpperCase()}</div>
+      <div class="alert-detail">${a.location || a.device_id}</div>
+      <div class="alert-time">${formatTime(a.timestamp)}</div>
+    </div>`).join('');
+}
+
+// ── ACCESS LOG ────────────────────────────────────────────
+function renderAccessLog(log) {
+  const el = document.getElementById('accessLog');
+  if (!log.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No scans.</div>';
+    return;
+  }
+  el.innerHTML = [...log].reverse().map(e => `
+    <div class="alert-item">
+      <div class="alert-type ${e.authorized ? 'low' : 'high'}">
+        ${e.authorized ? '✓ GRANTED' : '✗ DENIED'}
+      </div>
+      <div class="alert-detail">${e.uid} · ${e.location}</div>
+      <div class="alert-time">${formatTime(e.timestamp)}</div>
+    </div>`).join('');
+}
+
+// ── PANIC ─────────────────────────────────────────────────
+function checkPanic(alerts) {
+  const panicEvents = alerts.filter(a => a.type === 'panic_button' && a.severity === 'critical');
+  if (panicEvents.length > 0 && !panicActive) {
+    panicActive = true;
+    const latest = panicEvents[panicEvents.length - 1];
+    document.getElementById('panicLocation').textContent = 'Location: ' + latest.location;
+    document.getElementById('panicOverlay').classList.add('active');
+  }
+}
+
+function dismissPanic() {
+  panicActive = false;
+  document.getElementById('panicOverlay').classList.remove('active');
+}
+
+// ── CONTROLS ──────────────────────────────────────────────
+async function controlDevice(deviceId, state) {
+  try {
+    await fetch(HUB_URL + '/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId, state })
+    });
+    await poll();
+  } catch(e) { console.warn('Command failed:', e); }
+}
+
+async function thermostatAdjust(deviceId, delta) {
+  try {
+    const device = await fetch(HUB_URL + '/devices/' + deviceId).then(r => r.json());
+    const newSetpoint = (device.setpoint || 72) + delta;
+    await fetch(HUB_URL + '/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId, setpoint: newSetpoint })
+    });
+    await poll();
+  } catch(e) { console.warn('Thermostat adjust failed:', e); }
+}
+
+async function thermostatMode(deviceId, mode) {
+  try {
+    await fetch(HUB_URL + '/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId, mode })
+    });
+    await poll();
+  } catch(e) { console.warn('Thermostat mode failed:', e); }
+}
+
+async function setLightMode(deviceId, mode) {
+  try {
+    const device = await fetch(HUB_URL + '/devices/' + deviceId).then(r => r.json());
+    const ip = device.ip;
+    if (!ip) return;
+    await fetch(`http://${ip}/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: 'on', mode })
+    });
+    await poll();
+  } catch(e) { console.warn('Light mode failed:', e); }
+}
+
+async function allLights(mode) {
+  const devs = await fetch(HUB_URL + '/devices').then(r => r.json());
+  const lights = Object.entries(devs).filter(([, d]) => d.type === 'rgb_strip' || d.type === 'smart_plug');
+  await Promise.all(lights.map(([id]) => controlDevice(id, mode === 'off' ? 'off' : 'on')));
+  const strips = Object.entries(devs).filter(([, d]) => d.type === 'rgb_strip');
+  if (mode !== 'off' && mode !== 'on') {
+    await Promise.all(strips.map(([id]) => setLightMode(id, mode)));
+  }
+}
+
+async function setAllColor(hex) {
+  const devs = await fetch(HUB_URL + '/devices').then(r => r.json());
+  const strips = Object.entries(devs).filter(([, d]) => d.type === 'rgb_strip');
+  await Promise.all(strips.map(async ([, d]) => {
+    if (!d.ip) return;
+    await fetch(`http://${d.ip}/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: 'on', mode: 'solid', color: hex })
+    });
+  }));
+}
+
+function viewSnapshot(deviceId) {
+  window.open(HUB_URL + '/snapshots/' + deviceId + '/latest', '_blank');
+}
+
+// ── UTILS ─────────────────────────────────────────────────
+function timeSince(isoStr) {
+  const diff = (Date.now() - new Date(isoStr)) / 1000;
+  if (diff < 60) return Math.round(diff) + 's ago';
+  if (diff < 3600) return Math.round(diff / 60) + 'm ago';
+  return Math.round(diff / 3600) + 'h ago';
+}
+
+function formatTime(isoStr) {
+  if (!isoStr) return '—';
+  return new Date(isoStr).toLocaleTimeString('en-US', { hour12: false });
+}
+
+// ── AI COMMAND ────────────────────────────────────────────
+function sendAICmd(el) {
+  document.getElementById('aiInput').value = el.textContent;
+  submitAICmd();
+}
+
+async function submitAICmd() {
+  const input = document.getElementById('aiInput');
+  const btn   = document.getElementById('aiSendBtn');
+  const resp  = document.getElementById('aiResponse');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  btn.disabled = true;
+  resp.style.display = 'block';
+  resp.className = 'ai-response busy';
+  resp.textContent = '⟳ processing...';
+
+  try {
+    const data = await fetch(HUB_URL + '/ai/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    }).then(r => r.json());
+
+    const actionSummary = (data.actions || [])
+      .map(a => `→ ${a.action}${a.device_id ? ' [' + a.device_id + ']' : ''}${a.message ? ': ' + a.message : ''}${a.mode ? ' mode:' + a.mode : ''}`)
+      .join('\n') || '→ no actions taken';
+
+    resp.className = 'ai-response ok';
+    resp.textContent = actionSummary;
+    input.value = '';
+    await poll();
+  } catch(e) {
+    resp.className = 'ai-response error';
+    resp.textContent = '✗ hub unreachable';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── AI LOG ────────────────────────────────────────────────
+async function pollAILog() {
+  try {
+    const log = await fetch(HUB_URL + '/ai/log?limit=15').then(r => r.json());
+    renderAILog(log);
+  } catch(e) { /* hub offline */ }
+}
+
+function renderAILog(log) {
+  const el = document.getElementById('aiLog');
+  if (!log.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No AI activity yet.</div>';
+    return;
+  }
+  el.innerHTML = [...log].reverse().map(entry => {
+    const event   = entry.event || {};
+    const actions = entry.actions || [];
+    const eventLabel = event.type === 'nl_command'
+      ? `CMD: "${event.text}"`
+      : (event.type || 'unknown').replace(/_/g,' ').toUpperCase();
+
+    const actionSummary = actions.length
+      ? actions.map(a => `${a.action}${a.device_id ? ' ['+a.device_id+']':''}`).join(', ')
+      : 'no actions';
+
+    return `<div class="ai-log-item">
+      <div class="ai-log-event">${eventLabel}</div>
+      <div class="ai-log-actions">${actionSummary}</div>
+      <div class="ai-log-time">${formatTime(entry.timestamp)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── SETTINGS MODAL ────────────────────────────────────────
+function openSettings() {
+  document.getElementById('settingsModal').classList.add('active');
+  loadSettings();
+  loadUsers();
+  loadMemories();
+}
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('active');
+}
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+async function loadSettings() {
+  try {
+    const s = await fetch(HUB_URL + '/settings').then(r => r.json());
+    document.getElementById('setAiName').value     = s.ai_name || '';
+    document.getElementById('setModel').value      = s.model_name || '';
+    document.getElementById('setNtfy').value       = s.ntfy_topic || '';
+    document.getElementById('setNightStart').value = s.night_start_hour ?? 22;
+    document.getElementById('setNightEnd').value   = s.night_end_hour ?? 6;
+    document.getElementById('setAutoArm').checked  = !!s.auto_arm_at_night;
+    document.getElementById('settingsTitle').textContent = (s.ai_name || 'NOVA').toUpperCase() + ' · SETTINGS';
+  } catch(e) {}
+}
+
+async function saveSettings() {
+  const body = {
+    ai_name:          document.getElementById('setAiName').value,
+    model_name:       document.getElementById('setModel').value,
+    ntfy_topic:       document.getElementById('setNtfy').value,
+    night_start_hour: parseInt(document.getElementById('setNightStart').value),
+    night_end_hour:   parseInt(document.getElementById('setNightEnd').value),
+    auto_arm_at_night:document.getElementById('setAutoArm').checked,
+  };
+  await fetch(HUB_URL + '/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  loadSettings();
+  // Update header AI status
+  document.getElementById('aiStatus').textContent = '● ' + (body.ai_name || 'NOVA').toUpperCase();
+}
+
+// ── USERS ─────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const users = await fetch(HUB_URL + '/users').then(r => r.json());
+    const el = document.getElementById('usersList');
+    if (!users.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">No users yet.</div>';
+      return;
+    }
+    el.innerHTML = users.map(u => `
+      <div class="user-item">
+        <div class="user-info">
+          <div class="user-name">${u.name}
+            <span class="role-badge role-${u.role}">${u.role}</span>
+          </div>
+          <div class="user-meta">
+            ${u.rfid_uid ? 'RFID: ' + u.rfid_uid + ' · ' : ''}PREF: ${u.preferences?.preferred_temp_f ?? '—'}°F
+          </div>
+        </div>
+        <button class="del-btn" onclick="deleteUser('${u.user_id}')">✕</button>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function addUser() {
+  const name = document.getElementById('newUserName').value.trim();
+  if (!name) return;
+  const body = {
+    name,
+    role:     document.getElementById('newUserRole').value,
+    rfid_uid: document.getElementById('newUserRfid').value.trim() || null,
+    preferences: { preferred_temp_f: parseInt(document.getElementById('newUserTemp').value) }
+  };
+  await fetch(HUB_URL + '/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  document.getElementById('newUserName').value = '';
+  document.getElementById('newUserRfid').value = '';
+  loadUsers();
+}
+
+async function deleteUser(userId) {
+  await fetch(HUB_URL + '/users/' + userId, { method: 'DELETE' });
+  loadUsers();
+}
+
+// ── MEMORY ────────────────────────────────────────────────
+async function loadMemories() {
+  try {
+    const mems = await fetch(HUB_URL + '/ai/memory').then(r => r.json());
+    const el = document.getElementById('memoryList');
+    if (!mems.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">Nothing learned yet.</div>';
+      return;
+    }
+    el.innerHTML = mems.map(m => `
+      <div class="mem-item">
+        <div class="mem-info">
+          <div class="mem-text">${m.text}</div>
+          <div class="mem-meta">${m.category.toUpperCase()}</div>
+        </div>
+        <button class="del-btn" onclick="deleteMemory('${m.id}')">✕</button>
+      </div>`).join('');
+  } catch(e) {}
+}
+
+async function addMemory() {
+  const text = document.getElementById('newMemText').value.trim();
+  if (!text) return;
+  await fetch(HUB_URL + '/ai/memory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      category: document.getElementById('newMemCategory').value
+    })
+  });
+  document.getElementById('newMemText').value = '';
+  loadMemories();
+}
+
+async function deleteMemory(memId) {
+  await fetch(HUB_URL + '/ai/memory/' + memId, { method: 'DELETE' });
+  loadMemories();
+}
+
+// ── START ─────────────────────────────────────────────────
+poll();
+setInterval(poll, POLL_INTERVAL);
+setInterval(pollAILog, 5000);
+pollAILog();
+</script>
+</body>
+</html>

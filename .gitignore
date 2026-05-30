@@ -1,0 +1,32 @@
+# openHome ignores
+
+# Secrets — NEVER commit these
+firmware/**/config.h
+esp32/**/config.h
+pi/secrets_config.py
+secrets_config.py
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Hub runtime data (generated at runtime, not source)
+pi/data/
+pi/snapshots/
+hub/data/
+hub/snapshots/
+
+# Model artifacts (too large for git — use HF/releases)
+*.gguf
+*.safetensors
+openhome-model/
+*.bin
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

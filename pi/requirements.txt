@@ -1,0 +1,19 @@
+# Core hub
+fastapi
+uvicorn[standard]
+httpx
+python-multipart
+aiofiles
+websockets
+
+# ── Voice (optional — install only if running listener satellites) ──
+# Uncomment these on the Pi if you have voice listeners:
+# faster-whisper       # local STT, runs on Pi 4 CPU
+# piper-tts            # local TTS with custom voices
+# numpy
+# soundfile
+
+apscheduler        # scheduler
+# paho-mqtt        # zigbee bridge
+# resemblyzer      # speaker ID
+# openwakeword     # wake word detection

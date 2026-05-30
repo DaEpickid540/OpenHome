@@ -1,0 +1,20 @@
+# Modelfile for openHome custom model
+# Use this once you've fine-tuned and published your Llama 1B to HuggingFace
+#
+# Usage:
+#   ollama create openhome -f Modelfile
+#   Then set MODEL_NAME = "openhome" in ai_brain.py
+
+FROM llama3.1:1b
+
+# System prompt baked into the model
+SYSTEM """You are the AI brain of a local smart home called openHome.
+You receive sensor events and device state.
+Always reply with a valid JSON array of actions and nothing else."""
+
+# Conservative settings for consistent structured output
+PARAMETER temperature 0.1
+PARAMETER top_p 0.9
+PARAMETER num_predict 512
+PARAMETER stop "```"
+PARAMETER stop "\n\n\n"
