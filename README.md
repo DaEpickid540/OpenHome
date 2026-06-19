@@ -1,22 +1,26 @@
-# openHome 🏠
+# OpenHome
 
-Open source local-AI smart home system. ESP32 sensor/actuator nodes talk to a Raspberry Pi hub running a fine-tuned LLM. No cloud. No subscription. No data leaving your house.
+[![HuggingFace Model](https://img.shields.io/badge/HuggingFace-openhome--nova-yellow)](https://huggingface.co/Xx-Vexento-xX/openhome-nova)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Open-source local-AI smart home security system. ESP32 sensor/actuator nodes talk to a Raspberry Pi hub running a fine-tuned LLM called **NOVA**. No cloud. No subscription. No data leaving your house.
+
+The pre-trained NOVA model adapter is on HuggingFace: **[Xx-Vexento-xX/openhome-nova](https://huggingface.co/Xx-Vexento-xX/openhome-nova)**
 
 ---
 
 ## Repo layout
 
 ```
-openHome/
+OpenHome/
 ├── esp32/                         # Arduino IDE sketches — one folder per device
 │   ├── config.example.h           # template: copy to config.h in each folder
 │   ├── _openhome_security.h       # shared HMAC + auth helper (copied to each folder)
 │   ├── PAYLOAD_STANDARD.h         # JSON payload contract reference
-│   └── door_sensor/               # each device: folder name must match .ino name
-│       ├── door_sensor.ino
+│   └── <device>/                  # each device: folder name must match .ino name
+│       ├── <device>.ino
 │       ├── config.h               # WiFi, hub IP, API key (gitignored)
-│       └── _openhome_security.h
-│   └── ... (13 devices total)
+│       └── _openhome_security.h   # (13 devices total)
 │
 ├── pi/                            # Raspberry Pi hub
 │   ├── server.py                  # FastAPI — all HTTP endpoints
@@ -40,7 +44,11 @@ openHome/
 │   ├── openhome_train.jsonl       # 1718 training examples
 │   ├── openhome_val.jsonl         # 191 validation examples
 │   ├── generate_training_data.py  # regenerate or expand the dataset
-│   └── train_unsloth.py           # LoRA fine-tune script (Unsloth)
+│   └── train_unsloth.py           # LoRA fine-tune script (Unsloth/GPU)
+│
+├── train_overnight.py             # CPU-safe training script (Ryzen/Intel, no CUDA needed)
+├── run_overnight.py               # Orchestrator: auto-retry up to 3x with adjusted hyperparams
+├── verify_overnight.py            # 10-scenario quality checker, machine-readable verdict
 │
 ├── SECURITY.md                    # threat model, setup steps, Tailscale guide
 ├── LICENSE
@@ -220,7 +228,9 @@ Tools → Boards Manager → search **esp32** → install **esp32 by Espressif S
 
 ## The AI (NOVA)
 
-Runs a fine-tuned **Qwen 2.5-0.5B** or **Llama 3.2-1B** locally on the Pi via Ollama. Rename it anything in dashboard settings.
+NOVA is a LoRA fine-tune of **Qwen2.5-0.5B-Instruct**, served locally on the Pi via Ollama. It reasons about sensor events and natural language commands, then returns a structured JSON action list. Rename it anything in dashboard settings.
+
+**Pre-trained adapter:** [Xx-Vexento-xX/openhome-nova](https://huggingface.co/Xx-Vexento-xX/openhome-nova) — trained on 1718 OpenHome-specific examples, 9/10 test scenarios passing out of the box.
 
 **On every sensor event or NL command, NOVA:**
 1. Pulls relevant entries from RAG memory — household facts you've taught it + device rules
@@ -259,22 +269,40 @@ Runs a fine-tuned **Qwen 2.5-0.5B** or **Llama 3.2-1B** locally on the Pi via Ol
 
 ## Train your own model
 
+**Option 1: Use the pre-trained adapter (fastest)**
+
 ```bash
-# Regenerate or expand training data (1909 examples already included)
+# Download openhome-model/lora/ from https://huggingface.co/Xx-Vexento-xX/openhome-nova
+# then load into Ollama:
+ollama create openhome-nova -f pi/Modelfile
+# Switch to it: dashboard → Settings → Model → "openhome-nova"
+```
+
+**Option 2: CPU training (no GPU required)**
+
+Works on any machine with 16 GB+ RAM. ~9h for 2 epochs on a Ryzen 7 5800X3D.
+```bash
+python train_overnight.py           # single attempt
+python run_overnight.py             # auto-retry up to 3x, adjusts hyperparams on each fail
+python verify_overnight.py          # score the result (10 built-in test scenarios)
+```
+
+**Option 3: GPU training via Colab (~15 min, free T4)**
+
+```bash
+# Regenerate or expand training data (1718 examples already included)
 python3 dataset/generate_training_data.py
 
-# Fine-tune (free Colab T4, ~10-15 min for 0.5B)
+# Fine-tune with Unsloth (GPU — Colab, CUDA machine, etc.)
 python3 dataset/train_unsloth.py
 
-# Load the output GGUF into Ollama on the Pi
-ollama create openhome -f pi/Modelfile
-
-# Switch to it: dashboard → Settings → Model → "openhome"
+# Load into Ollama on the Pi
+ollama create openhome-nova -f pi/Modelfile
 ```
 
 The training data covers 18 categories: all sensor event types with time-of-day logic, 200+ light commands, 200+ thermostat commands, routines (goodnight/morning/movie/party/lockdown/away/arrive), 100 constraint examples teaching what the AI must NOT do, and 50 no-op restraint examples so it returns `[]` instead of inventing actions.
 
-AMD GPU note: Unsloth targets CUDA. On an RX 6700 XT, use free Colab T4 or the `transformers + peft` fallback block at the bottom of `train_unsloth.py`.
+AMD GPU note: Unsloth targets CUDA. On an RX 6700 XT or similar AMD card, use CPU training (`train_overnight.py`) or free Colab T4.
 
 ---
 
@@ -334,7 +362,8 @@ Uses [ntfy.sh](https://ntfy.sh) — free, no account needed.
 - [x] Device schema RAG — AI knows writable vs readable per device
 - [x] Users, preferences, settings, AI memory management
 - [x] Web dashboard — live device grid, AI command box, settings modal
-- [x] 1909 training examples + Unsloth fine-tune script
+- [x] 1718 training examples + LoRA fine-tune pipeline (GPU + CPU-safe)
+- [x] NOVA fine-tuned model published on HuggingFace
 - [ ] DPO refinement pass using Qwen as critic
 - [ ] MIFARE DESFire RFID (challenge-response, not cloneable UID)
 - [ ] Voice input on Pi
