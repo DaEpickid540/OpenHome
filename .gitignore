@@ -24,6 +24,10 @@ hub/snapshots/
 openhome-model/
 *.bin
 
+# Training run artifacts (generated at runtime)
+overnight_results.txt
+training_attempt_*.log
+
 # OS / editor
 .DS_Store
 Thumbs.db

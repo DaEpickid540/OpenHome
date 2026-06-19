@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <driver/rtc_io.h>
 
 // ─── DEVICE IDENTITY ──────────────────────────────────────
 const char* DEVICE_ID   = "door_front";
@@ -64,6 +65,10 @@ void connectAndReport(bool isOpen) {
 }
 
 void goToSleep() {
+  // Digital-domain pullup dies in deep sleep — keep the RTC one alive
+  // so the reed pin doesn't float and cause spurious wakeups.
+  rtc_gpio_pullup_en((gpio_num_t)REED_PIN);
+  rtc_gpio_pulldown_dis((gpio_num_t)REED_PIN);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)REED_PIN, lastState ? LOW : HIGH);
   esp_deep_sleep_start();
 }

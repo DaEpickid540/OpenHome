@@ -3,7 +3,7 @@
  * ──────────────────────────
  * Detects washing machine, dryer, and dishwasher cycles.
  * No power monitoring — purely vibration + audio pattern recognition.
- * Runs TinyML on-device to classify: idle | washing | spinning | drying | done
+ * Runs TinyML on-device to classify: idle | running | spinning | done
  *
  * HARDWARE (~$15):
  *   - ESP32-S3 (needs 8MB PSRAM for audio buffers)

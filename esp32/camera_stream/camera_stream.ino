@@ -89,11 +89,13 @@ void setupCamera() {
   config.frame_size   = FRAMESIZE_VGA;   // 640x480, good balance
   config.jpeg_quality = 12;
   config.fb_count     = 2;               // 2 frame buffers for streaming
-  esp_camera_init(&config);
+  if (esp_camera_init(&config) != ESP_OK) {
+    Serial.println("[CAM] init FAILED — check ribbon cable / board type");
+    return;
+  }
   // Auto exposure, auto white balance
   sensor_t* s = esp_camera_sensor_get();
-  s->set_framesize(s, FRAMESIZE_VGA);
-  s->set_quality(s, 12);
+  if (s) { s->set_framesize(s, FRAMESIZE_VGA); s->set_quality(s, 12); }
 }
 
 // ─── MJPEG STREAM ────────────────────────────────────────
@@ -113,6 +115,8 @@ void handleStream() {
   client.println();
 
   while (client.connected()) {
+    // Keep /control responsive while a stream client is connected
+    controlServer.handleClient();
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) { delay(10); continue; }
 
@@ -139,6 +143,7 @@ void handleCapture() {
 }
 
 void handleStatus() {
+  if (!checkServerAuth(server)) { server.send(401, "text/plain", "unauthorized"); return; }
   StaticJsonDocument<256> doc;
   doc["device_id"] = DEVICE_ID;
   doc["type"]      = DEVICE_TYPE;
@@ -152,13 +157,15 @@ void handleStatus() {
 
 // ─── CONTROL (port 80) ────────────────────────────────────
 void handleControl() {
-  if (!checkServerAuth(controlServer)) {
+  if (!controlServer.hasArg("plain")) { controlServer.send(400); return; }
+  String body = controlServer.arg("plain");
+  StaticJsonDocument<192> doc;
+  if (deserializeJson(doc, body)) { controlServer.send(400, "application/json", "{\"error\":\"bad json\"}"); return; }
+  if (!checkSignedCommand(controlServer, body, doc["ts"] | 0L)) {
     controlServer.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return;
   }
-  if (!controlServer.hasArg("plain")) { controlServer.send(400); return; }
-  StaticJsonDocument<128> doc;
-  deserializeJson(doc, controlServer.arg("plain"));
   sensor_t* s = esp_camera_sensor_get();
+  if (!s) { controlServer.send(503, "application/json", "{\"error\":\"no camera\"}"); return; }
   if (doc.containsKey("quality"))    s->set_quality(s, (int)doc["quality"]);
   if (doc.containsKey("flip"))       s->set_vflip(s, (bool)doc["flip"]);
   if (doc.containsKey("mirror"))     s->set_hmirror(s, (bool)doc["mirror"]);
@@ -204,15 +211,15 @@ void setup() {
   registerWithHub();
 
   // Stream server (port 81)
-  const char* hdrs[] = {"X-OpenHome-Key"};
-  server.collectHeaders(hdrs, 1);
+  const char* hdrs[] = {"X-OpenHome-Key", "X-OpenHome-Sig"};
+  server.collectHeaders(hdrs, 2);
   server.on("/stream",  HTTP_GET,  handleStream);
   server.on("/capture", HTTP_GET,  handleCapture);
   server.on("/status",  HTTP_GET,  handleStatus);
   server.begin();
 
   // Control server (port 80)
-  controlServer.collectHeaders(hdrs, 1);
+  controlServer.collectHeaders(hdrs, 2);
   controlServer.on("/control", HTTP_POST, handleControl);
   controlServer.begin();
 

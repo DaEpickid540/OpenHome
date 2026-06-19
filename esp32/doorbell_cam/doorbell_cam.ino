@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <driver/rtc_io.h>
 #include "esp_camera.h"
 
 const char* DEVICE_ID   = "doorbell_front";
@@ -14,7 +15,8 @@ const char* LOCATION    = "front_door";
 // READABLE: state, ring_count, has_photo
 
 const int BUTTON_PIN = 13;
-const int BUZZ_PIN   = 12;
+const int BUZZ_PIN   = 14;  // NOT 12 — GPIO12 is a strapping pin; if the buzzer
+                            // pulls it HIGH during reset the board won't boot
 
 #define CAM_PIN_PWDN 32
 #define CAM_PIN_RESET -1
@@ -58,8 +60,13 @@ void setup() {
   pinMode(BUZZ_PIN, OUTPUT);
   digitalWrite(BUZZ_PIN, LOW);
 
+  // Only a real button press (ext0 wake) counts as a ring — without this,
+  // every power-up chimed and reported a phantom ring.
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-  if (cause != ESP_SLEEP_WAKEUP_EXT0 && bootCount > 1) { goToSleep(); return; }
+  if (cause != ESP_SLEEP_WAKEUP_EXT0) {
+    Serial.println("[DOORBELL] armed — waiting for button");
+    goToSleep(); return;
+  }
 
   ringCount++;
   ringChime();
@@ -133,6 +140,9 @@ void uploadSnapshot(camera_fb_t* fb) {
 }
 
 void goToSleep() {
+  // Keep RTC pullup alive in deep sleep so the button pin doesn't float
+  rtc_gpio_pullup_en((gpio_num_t)BUTTON_PIN);
+  rtc_gpio_pulldown_dis((gpio_num_t)BUTTON_PIN);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, LOW);
   esp_deep_sleep_start();
 }

@@ -41,8 +41,8 @@ void setup() {
   syncNTP();
   registerWithHub();
   setupRoutes();
-  const char* hdrKeys[] = {"X-OpenHome-Key"};
-  server.collectHeaders(hdrKeys, 1);
+  const char* hdrKeys[] = {"X-OpenHome-Key", "X-OpenHome-Sig"};
+  server.collectHeaders(hdrKeys, 2);
   server.begin();
 }
 
@@ -99,10 +99,11 @@ void setupRoutes() {
     server.send(200, "application/json", res);
   });
   server.on("/control", HTTP_POST, []() {
-    if (!checkServerAuth(server)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (!server.hasArg("plain")) { server.send(400); return; }
-    StaticJsonDocument<64> doc;
-    deserializeJson(doc, server.arg("plain"));
+    String body = server.arg("plain");
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, body)) { server.send(400, "application/json", "{\"error\":\"bad json\"}"); return; }
+    if (!checkSignedCommand(server, body, doc["ts"] | 0L)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     String state = doc["state"] | "toggle";
     if (state == "on")       setRelay(true);
     else if (state == "off") setRelay(false);

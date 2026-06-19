@@ -24,7 +24,7 @@ const int RELAY_COOL = 26;
 const int RELAY_FAN  = 27;
 const int BTN_UP   = 32;
 const int BTN_DOWN = 33;
-const int BTN_MODE = 34;
+const int BTN_MODE = 13;   // NOT 34-39: those are input-only with no internal pullup
 #define SCREEN_W 128
 #define SCREEN_H 64
 
@@ -69,8 +69,9 @@ void setup() {
   pinMode(BTN_UP, INPUT_PULLUP); pinMode(BTN_DOWN, INPUT_PULLUP); pinMode(BTN_MODE, INPUT_PULLUP);
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); display.setTextColor(SSD1306_WHITE);
   connectWiFi();
-  syncNTP(); readSensors(); registerWithHub(); setupRoutes(); const char* hdrKeys[] = {"X-OpenHome-Key"};
-  server.collectHeaders(hdrKeys, 1);
+  syncNTP(); readSensors(); registerWithHub(); setupRoutes();
+  const char* hdrKeys[] = {"X-OpenHome-Key", "X-OpenHome-Sig"};
+  server.collectHeaders(hdrKeys, 2);
   server.begin();
 }
 
@@ -186,10 +187,11 @@ void setupRoutes() {
     server.send(200, "application/json", res);
   });
   server.on("/control", HTTP_POST, []() {
-    if (!checkServerAuth(server)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (!server.hasArg("plain")) { server.send(400); return; }
-    StaticJsonDocument<128> doc;
-    deserializeJson(doc, server.arg("plain"));
+    String body = server.arg("plain");
+    StaticJsonDocument<192> doc;
+    if (deserializeJson(doc, body)) { server.send(400, "application/json", "{\"error\":\"bad json\"}"); return; }
+    if (!checkSignedCommand(server, body, doc["ts"] | 0L)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (doc.containsKey("setpoint")) setpoint = constrain((float)doc["setpoint"], 50.0, 90.0);
     if (doc.containsKey("mode"))     mode = String((const char*)doc["mode"]);
     if (doc.containsKey("state"))    {

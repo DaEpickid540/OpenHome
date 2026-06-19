@@ -8,20 +8,29 @@ against the real device registry. Handles failures gracefully.
 import httpx
 import asyncio
 import json
+import time
 from datetime import datetime
 from typing import Callable
 
 import storage
+from security import compute_hmac
 
 try:
     from secrets_config import API_KEY
 except ImportError:
     API_KEY = "CHANGE_ME_RUN_GEN_KEYS"
 
-# Header sent on every outbound command to an actuator so the device
-# can verify the request came from the real hub (not an attacker).
-def _auth_headers():
-    return {"X-OpenHome-Key": API_KEY}
+# Every outbound command is timestamped and HMAC-signed over the exact
+# body bytes, so a device can verify it came from the real hub and
+# reject replays of sniffed commands (devices check ts freshness).
+def _sign_command(payload: dict) -> tuple[bytes, dict]:
+    body = json.dumps({**payload, "ts": int(time.time())},
+                      separators=(",", ":")).encode()
+    return body, {
+        "Content-Type":   "application/json",
+        "X-OpenHome-Key": API_KEY,
+        "X-OpenHome-Sig": compute_hmac(body),
+    }
 
 NTFY_ENABLED = True
 
@@ -72,7 +81,7 @@ async def _dispatch(action: dict, devices: dict) -> dict:
         elif kind == "set_light_mode":
             return await _set_light_mode(action, devices)
 
-        elif kind == "notify":
+        elif kind in ("notify", "alert"):
             return await _notify(action)
 
         elif kind == "log":
@@ -108,7 +117,8 @@ async def _control_device(action: dict, devices: dict) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(f"http://{ip}:{port}/control", json={"state": state}, headers=_auth_headers())
+            body, headers = _sign_command({"state": state})
+            resp = await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
         # Persist so AI + dashboard see the new state immediately
         storage.update_item("devices", device_id, {"state": state})
         print(f"[EXEC] {device_id} → {state} ({resp.status_code})")
@@ -139,7 +149,8 @@ async def _set_thermostat(action: dict, devices: dict) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(f"http://{ip}:{port}/control", json=payload, headers=_auth_headers())
+            body, headers = _sign_command(payload)
+            resp = await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
         # Mirror new values into registry + persist
         storage.update_item("devices", device_id, payload)
         print(f"[EXEC] {device_id} → thermostat {payload}")
@@ -172,7 +183,8 @@ async def _set_light_mode(action: dict, devices: dict) -> dict:
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(f"http://{ip}:{port}/control", json=payload, headers=_auth_headers())
+            body, headers = _sign_command(payload)
+            await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
         storage.update_item("devices", device_id, payload)
         print(f"[EXEC] {device_id} → mode:{mode} color:{color or 'none'}")
         return {"ok": True, "action": "set_light_mode", "device_id": device_id, "mode": mode}
@@ -188,7 +200,7 @@ async def _all_lights(action: dict, devices: dict) -> dict:
 
     strip_tasks = []
     for did, d in devices.items():
-        if d.get("type") not in ("rgb_strip", "smart_plug"):
+        if d.get("type") not in ("rgb_lights", "smart_plug"):
             continue
         ip   = d.get("ip")
         port = d.get("port", 80)
@@ -213,7 +225,8 @@ async def _all_lights(action: dict, devices: dict) -> dict:
 async def _post(ip: str, port: int, payload: dict) -> bool:
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            await client.post(f"http://{ip}:{port}/control", json=payload, headers=_auth_headers())
+            body, headers = _sign_command(payload)
+            await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
         return True
     except:
         return False

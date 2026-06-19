@@ -11,7 +11,7 @@ from seed_rag import seed_on_startup
 import users as users_mod
 import rag_memory
 from ai_brain import query_llm, natural_language_cmd, get_log as get_ai_log
-from action_executor import execute_actions, get_exec_log
+from action_executor import execute_actions, get_exec_log, _sign_command
 from security import security_middleware
 from voice_service import voice_router
 from scheduler import start_scheduler, stop_scheduler, add_schedule, update_schedule, delete_schedule, list_schedules, nl_to_cron, seed_default_schedules
@@ -71,12 +71,12 @@ async def receive_sensor(request: Request):
         alert = build_alert("motion", data, "low")
 
     elif dtype == "flood_sensor":
-        if data.get("alert"):
+        if data.get("state") == "wet":
             alert = build_alert("flood", data, "high", extra={"moisture_pct": data.get("moisture_pct")})
 
     elif dtype == "smoke_co_sensor":
-        smoke = data.get("smoke_alert", False)
-        co    = data.get("co_alert", False)
+        smoke = data.get("smoke_detected", False)
+        co    = data.get("co_detected", False)
         if smoke or co:
             label = "smoke+CO" if (smoke and co) else ("smoke" if smoke else "CO")
             alert = build_alert("smoke_co", data, data.get("severity", "high"),
@@ -280,10 +280,6 @@ async def send_command(request: Request):
 
     # Pass through all control keys (state, mode, setpoint, color, brightness)
     payload = {k: v for k, v in data.items() if k != "device_id"}
-    try:
-        from secrets_config import API_KEY
-    except ImportError:
-        API_KEY = "CHANGE_ME_RUN_GEN_KEYS"
 
     # Optimistic update: write the new state to storage immediately so the AI
     # sees it on next reasoning call, even if the device times out briefly.
@@ -291,9 +287,10 @@ async def send_command(request: Request):
     storage.update_item("devices", device_id, {**payload, "last_seen": now()})
 
     try:
+        body, headers = _sign_command(payload)
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.post(f"http://{ip}:{port}/control", json=payload,
-                                     headers={"X-OpenHome-Key": API_KEY}, timeout=5.0)
+            resp = await client.post(f"http://{ip}:{port}/control", content=body,
+                                     headers=headers, timeout=5.0)
         return resp.json()
     except Exception as e:
         # Storage already updated. Caller can retry. AI sees the intended state.
@@ -447,15 +444,12 @@ async def room_command(room_name: str, request: Request):
             ip   = d.get("ip")
             port = d.get("port", 80)
             if not ip: continue
-            try:
-                from secrets_config import API_KEY
-            except ImportError:
-                API_KEY = "CHANGE_ME"
             import httpx as _httpx
             try:
+                body, headers = _sign_command(data)
                 async with _httpx.AsyncClient(timeout=3.0) as client:
                     await client.post(f"http://{ip}:{port}/control",
-                        json=data, headers={"X-OpenHome-Key": API_KEY})
+                        content=body, headers=headers)
                 storage.update_item("devices", did, {**data})
                 results.append({"device_id": did, "ok": True})
             except Exception as e:

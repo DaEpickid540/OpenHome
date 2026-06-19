@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <driver/rtc_io.h>
 
 const char* DEVICE_ID   = "panic_bedroom";
 const char* DEVICE_TYPE = "panic_button";
@@ -121,6 +122,9 @@ void sendEvent(const char* state, const char* severity) {
 }
 
 void goToSleep() {
+  // Keep RTC pullup alive in deep sleep so the button pin doesn't float
+  rtc_gpio_pullup_en((gpio_num_t)BUTTON_PIN);
+  rtc_gpio_pulldown_dis((gpio_num_t)BUTTON_PIN);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN, LOW);
   esp_deep_sleep_start();
 }

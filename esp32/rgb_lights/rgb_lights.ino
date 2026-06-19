@@ -51,8 +51,8 @@ void setup() {
   syncNTP();
   registerWithHub();
   setupRoutes();
-  const char* hdrKeys[] = {"X-OpenHome-Key"};
-  server.collectHeaders(hdrKeys, 1);
+  const char* hdrKeys[] = {"X-OpenHome-Key", "X-OpenHome-Sig"};
+  server.collectHeaders(hdrKeys, 2);
   server.begin();
   for (int i = 0; i < NUM_LEDS; i++) { leds[i] = CRGB::White; FastLED.show(); delay(10); }
   setMode("solid");
@@ -138,15 +138,16 @@ void reportToHub() {
 
 void setupRoutes() {
   server.on("/status", HTTP_GET, []() {
-    StaticJsonDocument<256> doc; buildPayload(doc, false);
+    StaticJsonDocument<384> doc; buildPayload(doc, false);
     String res; serializeJson(doc, res);
     server.send(200, "application/json", res);
   });
   server.on("/control", HTTP_POST, []() {
-    if (!checkServerAuth(server)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (!server.hasArg("plain")) { server.send(400); return; }
-    StaticJsonDocument<128> doc;
-    deserializeJson(doc, server.arg("plain"));
+    String body = server.arg("plain");
+    StaticJsonDocument<192> doc;
+    if (deserializeJson(doc, body)) { server.send(400, "application/json", "{\"error\":\"bad json\"}"); return; }
+    if (!checkSignedCommand(server, body, doc["ts"] | 0L)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (doc.containsKey("brightness")) {
       brightness = constrain((int)doc["brightness"], 0, 255);
       FastLED.setBrightness(brightness); FastLED.show();

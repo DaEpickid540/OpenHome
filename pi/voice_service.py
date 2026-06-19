@@ -121,7 +121,7 @@ def synthesize_wav(text: str, voice: str = None) -> bytes:
 
 
 # ── HUB CALL ──────────────────────────────────────────────
-async def ask_aria(transcript: str, speaker: dict = None) -> dict:
+async def ask_nova(transcript: str, speaker: dict = None) -> dict:
     """Send the transcript to the AI brain, get actions + reply text."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Use the existing /ai/command endpoint
@@ -188,9 +188,11 @@ async def voice_stream(ws: WebSocket):
       Server → Client: text frame {"done": true}
     """
     await ws.accept()
-    # Optional: check API key in query string for ESP32 simplicity
-    key = ws.query_params.get("key", "")
-    if key != API_KEY:
+    # API key from header (preferred — query strings end up in logs).
+    # Query param kept as fallback for older satellite firmware.
+    import hmac as _hmac
+    key = ws.headers.get("X-OpenHome-Key", "") or ws.query_params.get("key", "")
+    if not _hmac.compare_digest(key.encode(), API_KEY.encode()):
         await ws.close(code=4401)
         return
 
@@ -220,7 +222,7 @@ async def voice_stream(ws: WebSocket):
                         speaker = identify_speaker(buf.getvalue())
                     await ws.send_text(json.dumps({"transcript": transcript, "speaker": speaker}))
                     if transcript:
-                        reply_data = await ask_aria(transcript, speaker=speaker)
+                        reply_data = await ask_nova(transcript, speaker=speaker)
                         spoken     = craft_spoken_reply(transcript, reply_data)
                         await ws.send_text(json.dumps({"reply": spoken,
                                                        "actions": reply_data.get("actions", [])}))

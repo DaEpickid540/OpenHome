@@ -55,8 +55,7 @@ void setup() {
   if (smokeAlert || coAlert) {
     alertCount++;
     soundBuzzer(smokeAlert, coAlert);
-    connectAndReport
-  syncNTP();(smokeAlert, coAlert, smokePct, coPct);
+    connectAndReport(smokeAlert, coAlert, smokePct, coPct);
   }
   goToSleep();
 }
@@ -74,6 +73,7 @@ void connectAndReport(bool smoke, bool co, int smokePct, int coPct) {
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries++ < 20) delay(500);
   if (WiFi.status() != WL_CONNECTED) return;
+  syncNTP();
 
   // severity set once, cleanly
   const char* sev = (smoke && co) ? "critical" : co ? "high" : "medium";

@@ -16,6 +16,7 @@ const int SENSOR_AO_PIN = 34;
 const int WET_THRESHOLD = 2000;
 
 RTC_DATA_ATTR uint32_t bootCount = 0;
+RTC_DATA_ATTR bool lastWet = false;
 
 String isoTimestamp() {
   struct tm t;
@@ -41,7 +42,13 @@ void setup() {
   bool isWet  = (digitalRead(SENSOR_DO_PIN) == LOW);
   int rawLevel = analogRead(SENSOR_AO_PIN);
   int moisturePct = map(rawLevel, 0, 4095, 0, 100);
-  if (isWet || rawLevel > WET_THRESHOLD) connectAndReport(isWet, moisturePct);
+  bool wet = isWet || rawLevel > WET_THRESHOLD;
+  // Report while wet, AND once when it dries out — otherwise the hub
+  // shows "wet" forever after a flood.
+  if (wet || wet != lastWet) {
+    lastWet = wet;
+    connectAndReport(wet, moisturePct);
+  }
   goToSleep();
 }
 
@@ -50,6 +57,7 @@ void connectAndReport(bool isWet, int pct) {
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries++ < 20) delay(500);
   if (WiFi.status() != WL_CONNECTED) return;
+  syncNTP();
 
   StaticJsonDocument<384> doc;
   doc["device_id"]    = DEVICE_ID;

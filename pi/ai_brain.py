@@ -196,7 +196,7 @@ def _parse_actions(raw: str) -> list[dict]:
         return []
 
     valid = []
-    allowed = {"control_device", "set_thermostat", "set_light_mode", "notify", "log", "all_lights"}
+    allowed = {"control_device", "set_thermostat", "set_light_mode", "notify", "alert", "log", "all_lights"}
     for a in actions:
         if not isinstance(a, dict): continue
         if a.get("action") not in allowed: continue

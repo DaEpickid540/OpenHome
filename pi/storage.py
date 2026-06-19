@@ -66,7 +66,7 @@ _DEFAULTS = {
         "ntfy_topic":       "openhome-alerts",
         "night_start_hour": 22,
         "night_end_hour":   6,
-        "model_name":       "llama3.1:1b",
+        "model_name":       "openhome-nova",
         "auto_arm_at_night": True,
         "auth_enabled":     True,
     },

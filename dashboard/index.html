@@ -1457,15 +1457,14 @@ async function thermostatMode(deviceId, mode) {
   } catch(e) { console.warn('Thermostat mode failed:', e); }
 }
 
+// Commands go through the hub, never straight to the device — the hub
+// HMAC-signs them and devices reject unsigned /control requests.
 async function setLightMode(deviceId, mode) {
   try {
-    const device = await fetch(HUB_URL + '/devices/' + deviceId).then(r => r.json());
-    const ip = device.ip;
-    if (!ip) return;
-    await fetch(`http://${ip}/control`, {
+    await fetch(HUB_URL + '/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: 'on', mode })
+      body: JSON.stringify({ device_id: deviceId, state: 'on', mode })
     });
     await poll();
   } catch(e) { console.warn('Light mode failed:', e); }
@@ -1484,12 +1483,11 @@ async function allLights(mode) {
 async function setAllColor(hex) {
   const devs = await fetch(HUB_URL + '/devices').then(r => r.json());
   const strips = Object.entries(devs).filter(([, d]) => d.type === 'rgb_strip');
-  await Promise.all(strips.map(async ([, d]) => {
-    if (!d.ip) return;
-    await fetch(`http://${d.ip}/control`, {
+  await Promise.all(strips.map(async ([id]) => {
+    await fetch(HUB_URL + '/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: 'on', mode: 'solid', color: hex })
+      body: JSON.stringify({ device_id: id, state: 'on', mode: 'solid', color: hex })
     });
   }));
 }

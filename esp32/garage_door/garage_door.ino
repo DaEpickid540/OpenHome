@@ -51,8 +51,8 @@ void setup() {
   readSensors();
   registerWithHub();
   setupRoutes();
-  const char* hdrKeys[] = {"X-OpenHome-Key"};
-  server.collectHeaders(hdrKeys, 1);
+  const char* hdrKeys[] = {"X-OpenHome-Key", "X-OpenHome-Sig"};
+  server.collectHeaders(hdrKeys, 2);
   server.begin();
 }
 
@@ -85,6 +85,7 @@ long measureDistanceCm() {
   digitalWrite(TRIG_PIN, HIGH); delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
   long d = pulseIn(ECHO_PIN, HIGH, 30000);
+  if (d == 0) return 9999;   // timeout / sensor unplugged — NOT "0 cm away"
   return d * 0.034 / 2;
 }
 
@@ -139,10 +140,11 @@ void setupRoutes() {
     server.send(200, "application/json", res);
   });
   server.on("/control", HTTP_POST, []() {
-    if (!checkServerAuth(server)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (!server.hasArg("plain")) { server.send(400); return; }
-    StaticJsonDocument<64> doc;
-    deserializeJson(doc, server.arg("plain"));
+    String body = server.arg("plain");
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, body)) { server.send(400, "application/json", "{\"error\":\"bad json\"}"); return; }
+    if (!checkSignedCommand(server, body, doc["ts"] | 0L)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     String state = doc["state"] | "toggle";
     bool shouldAct = (state == "toggle") ||
                      (state == "open" && !doorOpen) ||

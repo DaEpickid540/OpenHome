@@ -41,8 +41,7 @@ void setup() {
   bool motion = digitalRead(PIR_PIN);
   if (motion) {
     triggerCount++;
-    connectAndReport
-  syncNTP();();
+    connectAndReport();
   }
   goToSleep();
 }
@@ -52,6 +51,7 @@ void connectAndReport() {
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries++ < 20) delay(500);
   if (WiFi.status() != WL_CONNECTED) return;
+  syncNTP();
 
   StaticJsonDocument<384> doc;
   doc["device_id"]    = DEVICE_ID;

@@ -144,11 +144,18 @@ void handleWsText(const String& msg) {
 void handleWsBinary(uint8_t* data, size_t len) {
   // Incoming WAV bytes from Pi — play through speaker
   setState("speaking");
-  // Skip 44-byte WAV header, play raw PCM16
-  if (len > 44) {
-    size_t written = 0;
-    i2s_write(I2S_SPK_PORT, data + 44, len - 44, &written, portMAX_DELAY);
+  // Only the FIRST frame of a stream carries the 44-byte WAV header —
+  // detect it by the RIFF magic instead of blindly skipping every frame.
+  size_t offset = (len > 44 && memcmp(data, "RIFF", 4) == 0) ? 44 : 0;
+  if (len <= offset) return;
+  int16_t* samples = (int16_t*)(data + offset);
+  size_t n = (len - offset) / 2;
+  if (volume < 100) {
+    for (size_t i = 0; i < n; i++)
+      samples[i] = (int16_t)((int32_t)samples[i] * volume / 100);
   }
+  size_t written = 0;
+  i2s_write(I2S_SPK_PORT, samples, n * 2, &written, portMAX_DELAY);
 }
 
 void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
@@ -234,10 +241,11 @@ void reportState() {
 // ─── HTTP CONTROL (hub can change voice, volume, screen) ──
 void setupRoutes() {
   server.on("/control", HTTP_POST, []() {
-    if (!checkServerAuth(server)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (!server.hasArg("plain")) { server.send(400); return; }
+    String body = server.arg("plain");
     StaticJsonDocument<256> doc;
-    deserializeJson(doc, server.arg("plain"));
+    if (deserializeJson(doc, body)) { server.send(400, "application/json", "{\"error\":\"bad json\"}"); return; }
+    if (!checkSignedCommand(server, body, doc["ts"] | 0L)) { server.send(401, "application/json", "{\"error\":\"unauthorized\"}"); return; }
     if (doc.containsKey("voice"))       voiceName = String((const char*)doc["voice"]);
     if (doc.containsKey("volume"))      volume    = constrain((int)doc["volume"], 0, 100);
     if (doc.containsKey("screen_text")) { /* TODO: render to OLED */ }
@@ -254,8 +262,10 @@ void connectWiFi() {
 }
 
 void connectWebSocket() {
-  String wsPath = "/voice/stream?key=" + String(API_KEY) + "&voice=" + voiceName;
+  // Key goes in a header, not the URL — query strings end up in logs
+  String wsPath = "/voice/stream?voice=" + voiceName;
   ws.begin(HUB_IP_ADDR, HUB_PORT_NUM, wsPath.c_str());
+  ws.setExtraHeaders(("X-OpenHome-Key: " + String(API_KEY)).c_str());
   ws.onEvent(onWsEvent);
   ws.setReconnectInterval(3000);
 }
@@ -273,8 +283,8 @@ void setup() {
   registerWithHub();
   connectWebSocket();
   setupRoutes();
-  const char* hdrKeys[] = {"X-OpenHome-Key"};
-  server.collectHeaders(hdrKeys, 1);
+  const char* hdrKeys[] = {"X-OpenHome-Key", "X-OpenHome-Sig"};
+  server.collectHeaders(hdrKeys, 2);
   server.begin();
   Serial.println("[LISTENER] ready — hold button to talk");
 }
