@@ -14,13 +14,14 @@ The AI's name comes from settings (default "NOVA").
 """
 
 import json
+import os
 import httpx
 from datetime import datetime
 
 import storage
 import rag_memory
 
-OLLAMA_URL   = "http://localhost:11434/api/generate"
+OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
 MAX_TOKENS   = 512
 TIMEOUT_S    = 30
 CONTEXT_EVENTS = 8
@@ -170,6 +171,38 @@ async def _call_ollama(user_prompt: str) -> str:
         return "[]"
     except Exception as e:
         print(f"[AI] Ollama error: {e}")
+        return await _call_groq_fallback(user_prompt)
+
+
+# ── GROQ FALLBACK (cloud) ─────────────────────────────────
+# Used only when Ollama is unreachable AND GROQ_API_KEY is set in the
+# environment. Keeps the hub usable while the local model is down
+# (e.g. the GPU is busy fine-tuning). Never hardcode the key here.
+GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.1-8b-instant"
+
+async def _call_groq_fallback(user_prompt: str) -> str:
+    key = os.environ.get("GROQ_API_KEY", "")
+    if not key:
+        return "[]"
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
+            resp = await client.post(GROQ_URL,
+                headers={"Authorization": f"Bearer {key}"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": _system_prompt()},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "max_tokens": MAX_TOKENS,
+                    "temperature": 0.1,
+                })
+            resp.raise_for_status()
+            print("[AI] Ollama down — answered via Groq fallback")
+            return resp.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[AI] Groq fallback error: {e}")
         return "[]"
 
 

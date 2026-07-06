@@ -16,12 +16,13 @@ Stored via storage.py so it persists. Each entry:
 
 import json
 import math
+import os
 import httpx
 from datetime import datetime
 
 import storage
 
-OLLAMA_BASE   = "http://localhost:11434"
+OLLAMA_BASE   = os.environ.get("OLLAMA_BASE", "http://localhost:11434")
 EMBED_MODEL   = "nomic-embed-text"   # tiny, fast, runs on Pi
 EMBED_URL     = f"{OLLAMA_BASE}/api/embeddings"
 

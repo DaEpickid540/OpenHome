@@ -136,8 +136,8 @@ async def _control_device(action: dict, devices: dict) -> dict:
         print(f"[EXEC] {device_id} → {state} ({resp.status_code})")
         return {"ok": True, "action": "control_device", "device_id": device_id, "state": state}
     except Exception as e:
-        # Optimistic: still persist so AI knows what it intended
-        storage.update_item("devices", device_id, {"state": state})
+        # Don't persist — the device never got the command, and persisting
+        # made the dashboard show state changes that didn't happen
         print(f"[EXEC] {device_id} unreachable: {e}")
         return {"ok": False, "action": "control_device", "device_id": device_id, "error": "device unreachable"}
 
@@ -168,8 +168,6 @@ async def _set_thermostat(action: dict, devices: dict) -> dict:
         print(f"[EXEC] {device_id} → thermostat {payload}")
         return {"ok": True, "action": "set_thermostat", "device_id": device_id, **payload}
     except Exception as e:
-        # Optimistic persist
-        storage.update_item("devices", device_id, payload)
         print(f"[EXEC] thermostat {device_id} unreachable: {e}")
         return {"ok": False, "action": "set_thermostat", "device_id": device_id, "error": "device unreachable"}
 
@@ -210,7 +208,6 @@ async def _set_light_mode(action: dict, devices: dict) -> dict:
         print(f"[EXEC] {device_id} → mode:{mode} color:{color or 'none'}")
         return {"ok": True, "action": "set_light_mode", "device_id": device_id, "mode": mode}
     except Exception as e:
-        storage.update_item("devices", device_id, payload)
         print(f"[EXEC] {device_id} unreachable: {e}")
         return {"ok": False, "action": "set_light_mode", "device_id": device_id, "error": "device unreachable"}
 
