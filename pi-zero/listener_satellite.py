@@ -89,7 +89,10 @@ class HubClient:
         self.ws = websocket.WebSocketApp(url,
             on_open=self._open, on_message=self._msg,
             on_close=self._close, on_error=self._err)
-        threading.Thread(target=self.ws.run_forever, daemon=True).start()
+        # reconnect=5 → auto-retry every 5s if the hub restarts or WiFi drops;
+        # without it run_forever returns on disconnect and the satellite goes deaf
+        threading.Thread(target=lambda: self.ws.run_forever(reconnect=5),
+                         daemon=True).start()
         self.connected = False
         self.audio_done = threading.Event()
 

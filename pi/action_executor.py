@@ -14,6 +14,7 @@ from typing import Callable
 
 import storage
 from security import compute_hmac
+from zigbee_bridge import send_zigbee_command
 
 try:
     from secrets_config import API_KEY
@@ -109,6 +110,17 @@ async def _control_device(action: dict, devices: dict) -> dict:
         return {"ok": False, "error": f"device not found: {device_id}"}
 
     device = devices[device_id]
+
+    # Zigbee devices are controlled via Z2M MQTT, not HTTP — their registered
+    # ip/port point at the MQTT broker, which doesn't speak HTTP.
+    if device.get("source") == "zigbee":
+        ok = send_zigbee_command(device.get("location", device_id), {"state": state})
+        if ok:
+            storage.update_item("devices", device_id, {"state": state})
+            print(f"[EXEC] {device_id} → {state} (zigbee)")
+        return {"ok": ok, "action": "control_device", "device_id": device_id, "state": state,
+                **({} if ok else {"error": "zigbee bridge not connected"})}
+
     ip   = device.get("ip")
     port = device.get("port", 80)
 
@@ -171,15 +183,24 @@ async def _set_light_mode(action: dict, devices: dict) -> dict:
         return {"ok": False, "error": f"device not found: {device_id}"}
 
     device = devices[device_id]
+
+    payload = {"state": "on", "mode": mode}
+    if color:
+        payload["color"] = color
+
+    if device.get("source") == "zigbee":
+        ok = send_zigbee_command(device.get("location", device_id), payload)
+        if ok:
+            storage.update_item("devices", device_id, payload)
+            print(f"[EXEC] {device_id} → mode:{mode} (zigbee)")
+        return {"ok": ok, "action": "set_light_mode", "device_id": device_id, "mode": mode,
+                **({} if ok else {"error": "zigbee bridge not connected"})}
+
     ip   = device.get("ip")
     port = device.get("port", 80)
 
     if not ip:
         return {"ok": False, "error": "no IP"}
-
-    payload = {"state": "on", "mode": mode}
-    if color:
-        payload["color"] = color
 
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -199,9 +220,17 @@ async def _all_lights(action: dict, devices: dict) -> dict:
     results = []
 
     strip_tasks = []
+    zigbee_reached = 0
     for did, d in devices.items():
         if d.get("type") not in ("rgb_lights", "smart_plug"):
             continue
+
+        if d.get("source") == "zigbee":
+            cmd = {"state": "off"} if mode == "off" else {"state": "on"}
+            if send_zigbee_command(d.get("location", did), cmd):
+                zigbee_reached += 1
+            continue
+
         ip   = d.get("ip")
         port = d.get("port", 80)
         if not ip:
@@ -217,8 +246,9 @@ async def _all_lights(action: dict, devices: dict) -> dict:
             strip_tasks.append(_post(ip, port, {"state": "on", "mode": mode}))
 
     results = await asyncio.gather(*strip_tasks, return_exceptions=True)
-    success = sum(1 for r in results if r is True)
-    print(f"[EXEC] all_lights → {mode} ({success}/{len(strip_tasks)} devices)")
+    success = sum(1 for r in results if r is True) + zigbee_reached
+    total   = len(strip_tasks) + zigbee_reached
+    print(f"[EXEC] all_lights → {mode} ({success}/{total} devices)")
     return {"ok": True, "action": "all_lights", "mode": mode, "devices_reached": success}
 
 
