@@ -198,36 +198,59 @@ async def voice_stream(ws: WebSocket):
 
     voice_pref = ws.query_params.get("voice", None)
     audio_buf  = bytearray()
+    # 30s of 16kHz/16-bit mono audio. Without a cap, a satellite that never
+    # sends end_of_utterance (dropped packet, buggy firmware) grows this
+    # buffer forever for the life of the connection.
+    MAX_AUDIO_BYTES = SAMPLE_RATE * 2 * 30
+    # If nothing arrives for this long, drop the connection instead of
+    # waiting on ws.receive() forever.
+    IDLE_TIMEOUT_S = 60
 
     try:
         while True:
-            msg = await ws.receive()
+            try:
+                msg = await asyncio.wait_for(ws.receive(), timeout=IDLE_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                print("[VOICE] idle timeout, closing connection")
+                break
             if msg["type"] == "websocket.disconnect":
                 break
             if "bytes" in msg and msg["bytes"]:
                 audio_buf.extend(msg["bytes"])
+                if len(audio_buf) > MAX_AUDIO_BYTES:
+                    print("[VOICE] audio_buf exceeded 30s cap, dropping utterance")
+                    audio_buf = bytearray()
             elif "text" in msg and msg["text"]:
                 ctrl = json.loads(msg["text"])
                 if ctrl.get("end_of_utterance"):
-                    # Run the full pipeline
-                    transcript = transcribe_pcm16(bytes(audio_buf))
-                    # Speaker identification
-                    speaker = {"user_id": "unknown", "user_name": "unknown", "identified": False}
-                    if _HAS_SPEAKER_ID and audio_buf:
-                        import io, wave
-                        buf = io.BytesIO()
-                        with wave.open(buf, "wb") as wf:
-                            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
-                            wf.writeframes(bytes(audio_buf))
-                        speaker = identify_speaker(buf.getvalue())
-                    await ws.send_text(json.dumps({"transcript": transcript, "speaker": speaker}))
-                    if transcript:
-                        reply_data = await ask_nova(transcript, speaker=speaker)
-                        spoken     = craft_spoken_reply(transcript, reply_data)
-                        await ws.send_text(json.dumps({"reply": spoken,
-                                                       "actions": reply_data.get("actions", [])}))
-                        wav = synthesize_wav(spoken, voice_pref)
-                        await ws.send_bytes(wav)
+                    try:
+                        # Run the full pipeline
+                        transcript = transcribe_pcm16(bytes(audio_buf))
+                        # Speaker identification
+                        speaker = {"user_id": "unknown", "user_name": "unknown", "identified": False}
+                        if _HAS_SPEAKER_ID and audio_buf:
+                            import io, wave
+                            buf = io.BytesIO()
+                            with wave.open(buf, "wb") as wf:
+                                wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
+                                wf.writeframes(bytes(audio_buf))
+                            speaker = identify_speaker(buf.getvalue())
+                        await ws.send_text(json.dumps({"transcript": transcript, "speaker": speaker}))
+                        if transcript:
+                            reply_data = await ask_nova(transcript, speaker=speaker)
+                            spoken     = craft_spoken_reply(transcript, reply_data)
+                            await ws.send_text(json.dumps({"reply": spoken,
+                                                           "actions": reply_data.get("actions", [])}))
+                            wav = synthesize_wav(spoken, voice_pref)
+                            await ws.send_bytes(wav)
+                    except Exception as e:
+                        # STT/TTS/hub-call failures (missing model files, a
+                        # down Ollama, etc.) used to propagate past this
+                        # point and drop the connection ungracefully with no
+                        # reply — the satellite would just hang. Report the
+                        # error and still send "done" so it can recover.
+                        print(f"[VOICE] pipeline error: {e}")
+                        await ws.send_text(json.dumps({"error": str(e)}))
                     await ws.send_text(json.dumps({"done": True}))
                     audio_buf = bytearray()
                 elif ctrl.get("cancel"):
