@@ -88,7 +88,13 @@ def list_backups() -> list:
 
 async def backup_loop():
     """Daily backup at 3am. Starts immediately with a first backup."""
-    create_backup()   # backup on startup
+    try:
+        create_backup()   # backup on startup
+    except Exception as e:
+        # Unguarded, this would raise before the while loop starts, killing
+        # the task permanently and silently (asyncio only logs "exception
+        # was never retrieved") — backups would stop forever with no signal.
+        print(f"[BACKUP] Failed: {e}")
     while True:
         now = datetime.now()
         next_run = (now + timedelta(days=1)).replace(hour=3, minute=0, second=0)
