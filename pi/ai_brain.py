@@ -144,7 +144,10 @@ Translate this into the appropriate actions. Reply with JSON array only."""
         "actions":   actions
     })
 
-    print(f"[AI] NL cmd: '{text}' | Actions: {len(actions)}")
+    # Don't print the raw transcript — it ends up in journalctl/syslog,
+    # readable more widely than the API-key-gated /ai/log endpoint that
+    # already has the full text in reasoning_log.
+    print(f"[AI] NL cmd received | Actions: {len(actions)}")
     return actions
 
 
