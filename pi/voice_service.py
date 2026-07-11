@@ -48,10 +48,10 @@ except ImportError:
     _HAS_SPEAKER_ID = False
 from fastapi.responses import Response
 
-try:
-    from secrets_config import API_KEY
-except ImportError:
-    API_KEY = "CHANGE_ME_RUN_GEN_KEYS"
+# Import from security.py rather than re-deriving here: it fails closed
+# (refuses to boot) if secrets_config.py is missing, instead of silently
+# using a public placeholder key.
+from security import API_KEY
 
 # ── CONFIG ────────────────────────────────────────────────
 WHISPER_MODEL    = "tiny.en"        # tiny.en | base.en | small.en

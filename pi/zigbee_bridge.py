@@ -48,11 +48,10 @@ except ImportError:
     print("[ZIGBEE] paho-mqtt not installed — run: pip install paho-mqtt")
 
 import storage
-
-try:
-    from secrets_config import API_KEY, HMAC_KEY
-except ImportError:
-    API_KEY = HMAC_KEY = "CHANGE_ME"
+# Import from security.py rather than re-deriving here: it fails closed
+# (refuses to boot) if secrets_config.py is missing, instead of silently
+# using a public placeholder key.
+from security import API_KEY, HMAC_KEY
 
 MQTT_BROKER  = "localhost"
 MQTT_PORT    = 1883
