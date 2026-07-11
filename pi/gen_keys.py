@@ -25,7 +25,7 @@ if os.path.exists(OUT):
         print("Aborted. Existing keys kept.")
         raise SystemExit(0)
 
-with open(OUT, "w") as f:
+with open(OUT, "w", encoding="utf-8") as f:
     f.write('"""\n')
     f.write("openHome secrets — DO NOT COMMIT. This file is gitignored.\n")
     f.write("Regenerate with: python3 gen_keys.py\n")

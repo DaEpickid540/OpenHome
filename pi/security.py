@@ -29,11 +29,10 @@ from fastapi.responses import JSONResponse
 try:
     from secrets_config import API_KEY, HMAC_KEY
 except ImportError:
-    # Fallback so the hub still boots; warns loudly.
-    API_KEY  = "CHANGE_ME_RUN_GEN_KEYS"
-    HMAC_KEY = "CHANGE_ME_RUN_GEN_KEYS"
+    # Fail closed: a hardcoded fallback key is public (it's in this file) and
+    # would let anyone who read the repo control the hub. Refuse to boot instead.
     print("[SECURITY] ⚠ secrets_config.py not found — run 'python3 gen_keys.py'")
-    print("[SECURITY] ⚠ Using insecure placeholder keys. DO NOT use in production.")
+    raise SystemExit(1)
 
 # Endpoints that don't require auth (none, really — even root is protected)
 # Kept minimal. The dashboard sends the key on every call.

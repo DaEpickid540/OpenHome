@@ -13,12 +13,10 @@ from datetime import datetime
 from typing import Callable
 
 import storage
-from security import compute_hmac
-
-try:
-    from secrets_config import API_KEY
-except ImportError:
-    API_KEY = "CHANGE_ME_RUN_GEN_KEYS"
+# Import the key from security.py rather than re-deriving it here: that
+# module fails closed (refuses to boot) if secrets_config.py is missing,
+# so this stays in sync instead of having its own fail-open fallback.
+from security import compute_hmac, API_KEY
 
 # Every outbound command is timestamped and HMAC-signed over the exact
 # body bytes, so a device can verify it came from the real hub and
