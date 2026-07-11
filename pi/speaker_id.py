@@ -35,6 +35,7 @@ ALTERNATIVE (lighter, worse):
 import io
 import json
 import math
+import os
 import wave
 from pathlib import Path
 
@@ -110,7 +111,10 @@ def enroll_user(user_id: str, user_name: str, wav_clips: list[bytes]) -> dict:
     voice_print = np.mean(embeddings, axis=0)
 
     VOICEPRINT_DIR.mkdir(exist_ok=True)
-    np.save(VOICEPRINT_DIR / f"{user_id}.npy", voice_print)
+    os.chmod(VOICEPRINT_DIR, 0o700)  # voiceprints are biometric data — owner-only
+    vp_path = VOICEPRINT_DIR / f"{user_id}.npy"
+    np.save(vp_path, voice_print)
+    os.chmod(vp_path, 0o600)
 
     # Store metadata
     vps = storage.get("voiceprints") if "voiceprints" in storage._cache else {}
