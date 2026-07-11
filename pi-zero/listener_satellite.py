@@ -85,8 +85,11 @@ class Recorder:
 # ── WEBSOCKET CLIENT ──────────────────────────────────────
 class HubClient:
     def __init__(self):
-        url = f"ws://{HUB_IP}:{HUB_PORT}/voice/stream?key={API_KEY}&voice={VOICE}"
+        # Key goes in a header, not the URL — query strings end up in logs
+        # and, over plain ws://, are visible to anyone sniffing the LAN.
+        url = f"ws://{HUB_IP}:{HUB_PORT}/voice/stream?voice={VOICE}"
         self.ws = websocket.WebSocketApp(url,
+            header=[f"X-OpenHome-Key: {API_KEY}"],
             on_open=self._open, on_message=self._msg,
             on_close=self._close, on_error=self._err)
         threading.Thread(target=self.ws.run_forever, daemon=True).start()
