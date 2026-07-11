@@ -49,6 +49,12 @@ async def register_device(request: Request):
         return JSONResponse({"error": "no device_id"}, status_code=400)
     storage.set_item("devices", device_id, { **data, "last_seen": now(), "registered": True })
     print(f"[REGISTER] {device_id} @ {data.get('ip')}:{data.get('port')}")
+    if data.get("type") == "camera_stream" and data.get("ip"):
+        # register_camera() populates camera_service's own _streams registry,
+        # which live-view/recording depend on — without this call it was
+        # never invoked, so camera devices registered fine in the general
+        # registry but recording/live-view silently never worked.
+        register_camera(device_id, data["ip"], data.get("port", 81))
     return {"ok": True}
 
 # ─── SENSOR ───────────────────────────────────────────────
@@ -488,6 +494,12 @@ async def _on_startup():
     start_presence()
     asyncio.create_task(backup_loop())
     asyncio.create_task(start_zigbee_bridge())
+    # Reconcile camera_service's _streams registry from devices already
+    # known to the hub (e.g. registered before a restart), since it's
+    # otherwise only populated by a fresh /register call.
+    for did, d in storage.get("devices").items():
+        if d.get("type") == "camera_stream" and d.get("ip"):
+            register_camera(did, d["ip"], d.get("port", 81))
     start_all_cameras()
 
 @app.on_event("shutdown")

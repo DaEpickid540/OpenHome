@@ -156,6 +156,7 @@ async def _record_clip(device_id: str, duration_s: int):
         "-crf", "28",
         str(out)
     ]
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -166,30 +167,43 @@ async def _record_clip(device_id: str, duration_s: int):
         print(f"[CAM] Recorded {out.name} ({out.stat().st_size // 1024}KB)")
     except Exception as e:
         print(f"[CAM] Recording failed for {device_id}: {e}")
+        # asyncio.wait_for's timeout only cancels the await, not the ffmpeg
+        # child itself — without this it keeps running detached forever.
+        if proc is not None and proc.returncode is None:
+            proc.kill()
+            await proc.wait()
         if out.exists(): out.unlink()
 
 
 async def _record_loop(device_id: str):
     """Continuous recording loop for a camera."""
     while True:
-        if MOTION_ONLY:
-            # Check if there's been recent motion near this camera
-            alerts = storage.get("alerts")
-            recent_motion = any(
-                a.get("type") == "motion" and
-                a.get("device_id", "").replace("motion_", "") in device_id and
-                (datetime.now() - datetime.fromisoformat(a["timestamp"])).seconds < 300
-                for a in alerts[-20:]
-                if a.get("timestamp")
-            )
-            if not recent_motion:
-                await asyncio.sleep(30)
-                continue
+        try:
+            if MOTION_ONLY:
+                # Check if there's been recent motion near this camera
+                alerts = storage.get("alerts")
+                recent_motion = any(
+                    a.get("type") == "motion" and
+                    a.get("device_id", "").replace("motion_", "") in device_id and
+                    (datetime.now() - datetime.fromisoformat(a["timestamp"])).seconds < 300
+                    for a in alerts[-20:]
+                    if a.get("timestamp")
+                )
+                if not recent_motion:
+                    await asyncio.sleep(30)
+                    continue
 
-        _streams[device_id]["recording"] = True
-        await _record_clip(device_id, CLIP_DURATION_MIN * 60)
-        _streams[device_id]["recording"] = False
-        _prune_old_recordings(device_id)
+            _streams[device_id]["recording"] = True
+            await _record_clip(device_id, CLIP_DURATION_MIN * 60)
+            _streams[device_id]["recording"] = False
+            _prune_old_recordings(device_id)
+        except Exception as e:
+            # This loop is launched via create_task() and never awaited —
+            # an uncaught exception here (bad timestamp, unlink permission
+            # error, etc.) would kill recording for this camera permanently
+            # and silently. Log and keep the loop alive instead.
+            print(f"[CAM] _record_loop error for {device_id}: {e}")
+            await asyncio.sleep(30)
 
 
 def _prune_old_recordings(device_id: str):
