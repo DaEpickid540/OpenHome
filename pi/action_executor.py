@@ -30,6 +30,25 @@ def _sign_command(payload: dict) -> tuple[bytes, dict]:
         "X-OpenHome-Sig": compute_hmac(body),
     }
 
+# Shared by every device command below — one retry on transient failures
+# (previously each call site made a single attempt and, in _post(), a bare
+# `except:` discarded the actual error entirely).
+async def _send_command(ip: str, port: int, payload: dict, retries: int = 1, backoff: float = 0.5):
+    """POST a signed command to a device. Returns (ok, error_str, status_code)."""
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                body, headers = _sign_command(payload)
+                resp = await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
+            return True, None, resp.status_code
+        except Exception as e:
+            last_err = str(e)
+            if attempt < retries:
+                await asyncio.sleep(backoff)
+    return False, last_err, None
+
+
 NTFY_ENABLED = True
 
 def _ntfy_url():
@@ -113,19 +132,14 @@ async def _control_device(action: dict, devices: dict) -> dict:
     if not ip:
         return {"ok": False, "error": f"{device_id} is battery-powered, can't receive commands"}
 
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            body, headers = _sign_command({"state": state})
-            resp = await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
-        # Persist so AI + dashboard see the new state immediately
-        storage.update_item("devices", device_id, {"state": state})
-        print(f"[EXEC] {device_id} → {state} ({resp.status_code})")
+    ok, err, status = await _send_command(ip, port, {"state": state})
+    # Persist so AI + dashboard see the (optimistic, if unreachable) new state immediately
+    storage.update_item("devices", device_id, {"state": state})
+    if ok:
+        print(f"[EXEC] {device_id} → {state} ({status})")
         return {"ok": True, "action": "control_device", "device_id": device_id, "state": state}
-    except Exception as e:
-        # Optimistic: still persist so AI knows what it intended
-        storage.update_item("devices", device_id, {"state": state})
-        print(f"[EXEC] {device_id} unreachable: {e}")
-        return {"ok": False, "action": "control_device", "device_id": device_id, "error": "device unreachable"}
+    print(f"[EXEC] {device_id} unreachable after retry: {err}")
+    return {"ok": False, "action": "control_device", "device_id": device_id, "error": "device unreachable"}
 
 
 async def _set_thermostat(action: dict, devices: dict) -> dict:
@@ -145,19 +159,14 @@ async def _set_thermostat(action: dict, devices: dict) -> dict:
     if not payload:
         return {"ok": False, "error": "nothing to set"}
 
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            body, headers = _sign_command(payload)
-            resp = await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
-        # Mirror new values into registry + persist
-        storage.update_item("devices", device_id, payload)
+    ok, err, status = await _send_command(ip, port, payload)
+    # Mirror new values into registry + persist (optimistic if unreachable)
+    storage.update_item("devices", device_id, payload)
+    if ok:
         print(f"[EXEC] {device_id} → thermostat {payload}")
         return {"ok": True, "action": "set_thermostat", "device_id": device_id, **payload}
-    except Exception as e:
-        # Optimistic persist
-        storage.update_item("devices", device_id, payload)
-        print(f"[EXEC] thermostat {device_id} unreachable: {e}")
-        return {"ok": False, "action": "set_thermostat", "device_id": device_id, "error": "device unreachable"}
+    print(f"[EXEC] thermostat {device_id} unreachable after retry: {err}")
+    return {"ok": False, "action": "set_thermostat", "device_id": device_id, "error": "device unreachable"}
 
 
 async def _set_light_mode(action: dict, devices: dict) -> dict:
@@ -179,17 +188,13 @@ async def _set_light_mode(action: dict, devices: dict) -> dict:
     if color:
         payload["color"] = color
 
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            body, headers = _sign_command(payload)
-            await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
-        storage.update_item("devices", device_id, payload)
+    ok, err, _ = await _send_command(ip, port, payload)
+    storage.update_item("devices", device_id, payload)
+    if ok:
         print(f"[EXEC] {device_id} → mode:{mode} color:{color or 'none'}")
         return {"ok": True, "action": "set_light_mode", "device_id": device_id, "mode": mode}
-    except Exception as e:
-        storage.update_item("devices", device_id, payload)
-        print(f"[EXEC] {device_id} unreachable: {e}")
-        return {"ok": False, "action": "set_light_mode", "device_id": device_id, "error": "device unreachable"}
+    print(f"[EXEC] {device_id} unreachable after retry: {err}")
+    return {"ok": False, "action": "set_light_mode", "device_id": device_id, "error": "device unreachable"}
 
 
 async def _all_lights(action: dict, devices: dict) -> dict:
@@ -221,13 +226,12 @@ async def _all_lights(action: dict, devices: dict) -> dict:
 
 
 async def _post(ip: str, port: int, payload: dict) -> bool:
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            body, headers = _sign_command(payload)
-            await client.post(f"http://{ip}:{port}/control", content=body, headers=headers)
-        return True
-    except:
-        return False
+    ok, err, _ = await _send_command(ip, port, payload)
+    if not ok:
+        # Previously a bare `except:` discarded this entirely — all_lights
+        # only ever showed a success count, never why a device was missed.
+        print(f"[EXEC] all_lights POST to {ip}:{port} failed after retry: {err}")
+    return ok
 
 
 async def _notify(action: dict) -> dict:
