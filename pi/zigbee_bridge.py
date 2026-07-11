@@ -17,6 +17,10 @@ Install:
   # Mosquitto MQTT broker
   sudo apt install mosquitto mosquitto-clients
   sudo systemctl enable mosquitto
+  # By default Mosquitto allows anonymous connections on 1883. If the
+  # broker is reachable from anywhere beyond this host, disable that
+  # (allow_anonymous false + password_file) and set MQTT_USER/MQTT_PASSWORD
+  # env vars so this bridge authenticates.
 
   # Zigbee2MQTT
   sudo npm install -g zigbee2mqtt
@@ -35,6 +39,7 @@ Device mapping:
 """
 
 import json
+import os
 import asyncio
 import hmac
 import hashlib
@@ -58,6 +63,11 @@ MQTT_PORT    = 1883
 MQTT_TOPIC   = "zigbee2mqtt/#"
 Z2M_BASE     = "zigbee2mqtt"
 HUB_URL      = "http://localhost:8765"
+# Set these if Mosquitto is configured with allow_anonymous false (recommended
+# if the broker is reachable from anywhere beyond this host). Left unset,
+# the client connects anonymously as before.
+MQTT_USER     = os.environ.get("MQTT_USER")
+MQTT_PASSWORD = os.environ.get("MQTT_PASSWORD")
 
 # ── TYPE MAPPING ─────────────────────────────────────────
 # Zigbee device feature → openHome type
@@ -241,6 +251,8 @@ async def start_zigbee_bridge():
 
     _loop = asyncio.get_event_loop()
     client = mqtt.Client()
+    if MQTT_USER:
+        client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
     client.on_connect = _on_connect
     client.on_message = _on_message
     send_zigbee_command._client = client
