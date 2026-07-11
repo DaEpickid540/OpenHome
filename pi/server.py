@@ -438,10 +438,14 @@ async def get_rooms():
 async def room_command(room_name: str, request: Request):
     """Send a command to all controllable devices in a room."""
     data    = await request.json()
-    devices = _devices()
+    # Snapshot before iterating: the loop body awaits an HTTP call per
+    # device, and storage.get("devices") returns the live cached dict — a
+    # concurrent /register or /sensor request can insert a new key into it
+    # mid-iteration and raise "dictionary changed size during iteration".
+    devices = list(_devices().items())
     room_n  = room_name.lower().replace("-","_").replace(" ","_")
     results = []
-    for did, d in devices.items():
+    for did, d in devices:
         loc = d.get("location","").lower()
         if loc == room_n and d.get("controllable"):
             payload = {**data, "device_id": did}
