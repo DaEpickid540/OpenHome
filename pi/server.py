@@ -235,6 +235,11 @@ async def get_settings():
 @app.patch("/settings")
 async def update_settings(request: Request):
     data = await request.json()
+    if data.get("auth_enabled") is False:
+        # Disabling auth opens every endpoint (including /ai/command) to
+        # anyone on the LAN with no further checks — make that loud rather
+        # than a silent, undetectable settings write.
+        print("[SECURITY] ⚠ auth_enabled set to False — all endpoints are now unauthenticated")
     for k, v in data.items():
         storage.set_setting(k, v)
     return {"ok": True, "settings": storage.get("settings")}
