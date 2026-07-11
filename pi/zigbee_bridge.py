@@ -176,6 +176,14 @@ async def _post_to_hub(endpoint: str, payload: dict):
         print(f"[ZIGBEE] Post failed: {e}")
 
 
+async def _reconcile_removed(current_ids: set):
+    """Delete zigbee devices from the hub's registry that Z2M no longer reports."""
+    for did in list(storage.get("devices").keys()):
+        if did.startswith("zb_") and did not in current_ids:
+            storage.delete_item("devices", did)
+            print(f"[ZIGBEE] Removed stale device from registry: {did}")
+
+
 # ── MQTT CALLBACKS ────────────────────────────────────────
 _device_types: dict = {}     # friendly_name → device type
 _loop = None
@@ -194,6 +202,7 @@ def _on_message(client, userdata, msg):
 
     # Device bridge messages (topology/availability)
     if topic == f"{Z2M_BASE}/bridge/devices":
+        current_ids = set()
         for dev in (payload if isinstance(payload, list) else []):
             name = dev.get("friendly_name","")
             exposes = dev.get("definition",{}).get("exposes",[])
@@ -203,9 +212,17 @@ def _on_message(client, userdata, msg):
             register_payload = _build_payload(name, {}, dtype)
             register_payload["ip"]   = MQTT_BROKER
             register_payload["port"] = MQTT_PORT
+            current_ids.add(register_payload["device_id"])
             if _loop:
                 asyncio.run_coroutine_threadsafe(
                     _post_to_hub("/register", register_payload), _loop)
+        # This message is the full current Z2M topology — anything
+        # previously known as zigbee ("zb_*") but missing from it has been
+        # removed/renamed in Z2M. Without this, removed/renamed devices sat
+        # in storage["devices"] forever as stale ghost entries.
+        if _loop:
+            asyncio.run_coroutine_threadsafe(
+                _reconcile_removed(current_ids), _loop)
         return
 
     # Availability
@@ -239,7 +256,15 @@ def send_zigbee_command(friendly_name: str, command: dict):
         # Convert hex to RGB
         h = command["color"].lstrip("#")
         z2m_cmd["color"] = {"r": int(h[0:2],16), "g": int(h[2:4],16), "b": int(h[4:6],16)}
-    send_zigbee_command._client.publish(topic, json.dumps(z2m_cmd))
+    try:
+        info = send_zigbee_command._client.publish(topic, json.dumps(z2m_cmd))
+        if info.rc != mqtt.MQTT_ERR_SUCCESS:
+            # Previously discarded silently: a command to a Zigbee device
+            # (e.g. "turn off the light") could vanish with nothing showing
+            # it ever failed, anywhere.
+            print(f"[ZIGBEE] Publish to {topic} failed, rc={info.rc}")
+    except Exception as e:
+        print(f"[ZIGBEE] Publish to {topic} raised: {e}")
 
 
 # ── STARTUP ───────────────────────────────────────────────
