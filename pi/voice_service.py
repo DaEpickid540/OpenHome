@@ -207,10 +207,15 @@ async def voice_stream(ws: WebSocket):
             if "bytes" in msg and msg["bytes"]:
                 audio_buf.extend(msg["bytes"])
             elif "text" in msg and msg["text"]:
-                ctrl = json.loads(msg["text"])
+                try:
+                    ctrl = json.loads(msg["text"])
+                except (json.JSONDecodeError, ValueError):
+                    continue  # ignore malformed control frames instead of killing the socket
                 if ctrl.get("end_of_utterance"):
-                    # Run the full pipeline
-                    transcript = transcribe_pcm16(bytes(audio_buf))
+                    # Run the full pipeline. STT/TTS are CPU-heavy sync calls —
+                    # run them in a worker thread so the hub's event loop
+                    # (sensor posts, alerts, dashboard) keeps serving.
+                    transcript = await asyncio.to_thread(transcribe_pcm16, bytes(audio_buf))
                     # Speaker identification
                     speaker = {"user_id": "unknown", "user_name": "unknown", "identified": False}
                     if _HAS_SPEAKER_ID and audio_buf:
@@ -226,7 +231,7 @@ async def voice_stream(ws: WebSocket):
                         spoken     = craft_spoken_reply(transcript, reply_data)
                         await ws.send_text(json.dumps({"reply": spoken,
                                                        "actions": reply_data.get("actions", [])}))
-                        wav = synthesize_wav(spoken, voice_pref)
+                        wav = await asyncio.to_thread(synthesize_wav, spoken, voice_pref)
                         await ws.send_bytes(wav)
                     await ws.send_text(json.dumps({"done": True}))
                     audio_buf = bytearray()
@@ -241,7 +246,7 @@ async def voice_stream(ws: WebSocket):
 async def http_tts(payload: dict):
     text  = payload.get("text", "")
     voice = payload.get("voice")
-    wav = synthesize_wav(text, voice)
+    wav = await asyncio.to_thread(synthesize_wav, text, voice)
     return Response(content=wav, media_type="audio/wav")
 
 

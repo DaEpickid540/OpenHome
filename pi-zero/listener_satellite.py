@@ -59,17 +59,26 @@ WAKE_WORD = "hey_nova"  # or None for PTT
 
 # ── AUDIO RECORDING ───────────────────────────────────────
 class Recorder:
+    """Single shared InputStream. Opening a second stream on the same mic
+    fails or garbles audio on many ALSA devices, so wake-word detection
+    taps this stream instead of opening its own."""
     def __init__(self):
         self.q = queue.Queue()
         self.active = False
+        self.tap = None   # optional callable(bytes) — receives every chunk
         self.stream = sd.InputStream(
             samplerate=SAMPLE_RATE, channels=1, dtype="int16",
             blocksize=CHUNK_SAMPLES, callback=self._cb)
         self.stream.start()
 
     def _cb(self, indata, frames, t, status):
+        data = bytes(indata)
         if self.active:
-            self.q.put(bytes(indata))
+            self.q.put(data)
+        tap = self.tap
+        if tap:
+            try: tap(data)
+            except Exception: pass
 
     def start(self): self.active = True
     def stop(self):  self.active = False
@@ -89,7 +98,10 @@ class HubClient:
         self.ws = websocket.WebSocketApp(url,
             on_open=self._open, on_message=self._msg,
             on_close=self._close, on_error=self._err)
-        threading.Thread(target=self.ws.run_forever, daemon=True).start()
+        # reconnect=5 → auto-retry every 5s if the hub restarts or WiFi drops;
+        # without it run_forever returns on disconnect and the satellite goes deaf
+        threading.Thread(target=lambda: self.ws.run_forever(reconnect=5),
+                         daemon=True).start()
         self.connected = False
         self.audio_done = threading.Event()
 
@@ -220,50 +232,78 @@ def _run_with_wake_word(rec, hub):
         _run_push_to_talk(rec, hub)
         return
 
-    # Constant stream for wake word detection
-    WAKE_CHUNK = 1280  # 80ms @ 16kHz, required by openwakeword
-    import queue
+    # Tap the recorder's existing stream — do NOT open a second InputStream
+    # on the same mic (fails or garbles audio on many ALSA devices).
+    WAKE_CHUNK_SAMPLES = 1280  # 80ms @ 16kHz, required by openwakeword
     wake_q: queue.Queue = queue.Queue()
-
-    def _wake_cb(indata, frames, t, status):
-        wake_q.put(bytes(indata))
-
-    import sounddevice as sd
-    wake_stream = sd.InputStream(samplerate=16000, channels=1, dtype="int16",
-                                  blocksize=WAKE_CHUNK, callback=_wake_cb)
-    wake_stream.start()
+    rec.tap = wake_q.put
     print(f"[WAKE] Listening for '{WAKE_WORD}'…")
 
-    WAKE_THRESHOLD = 0.7   # confidence threshold
-    POST_WAKE_S    = 4.0   # record this many seconds after wake word
+    WAKE_THRESHOLD  = 0.7   # confidence threshold
+    MAX_UTTERANCE_S = 8.0   # hard cap per utterance
+    SILENCE_RMS     = 300   # int16 RMS below this counts as silence
+    SILENCE_END_S   = 0.9   # this much trailing silence ends the utterance
 
+    wake_buf = bytearray()
     try:
         while True:
-            chunk = wake_q.get()
-            import numpy as np
-            audio_np = np.frombuffer(chunk, dtype=np.int16)
+            wake_buf.extend(wake_q.get())
+            if len(wake_buf) < WAKE_CHUNK_SAMPLES * 2:
+                continue
+            frame = bytes(wake_buf[:WAKE_CHUNK_SAMPLES * 2])
+            del wake_buf[:WAKE_CHUNK_SAMPLES * 2]
+            audio_np = np.frombuffer(frame, dtype=np.int16)
             ww.predict(audio_np)
             scores = ww.prediction_buffer.get(WAKE_WORD, [0])
-            if scores and max(scores) > WAKE_THRESHOLD:
-                print(f"[WAKE] Triggered! ({max(scores):.2f}) — recording {POST_WAKE_S}s…")
-                # Drain wake queue, start real recording
-                while not wake_q.empty():
-                    try: wake_q.get_nowait()
-                    except: break
-                ww.reset()
-                rec.start()
-                time.sleep(POST_WAKE_S)
-                rec.stop()
-                chunks = rec.drain()
-                if chunks:
-                    for c in chunks:
-                        hub.send_audio_chunk(c)
-                    hub.end_utterance()
-                    hub.audio_done.wait(timeout=60)
-                    hub.audio_done.clear()
-                print(f"[WAKE] Listening for '{WAKE_WORD}'…")
+            if not scores or max(scores) <= WAKE_THRESHOLD:
+                continue
+
+            print(f"[WAKE] Triggered! ({max(scores):.2f}) — listening…")
+            rec.tap = None          # pause wake feed while capturing
+            ww.reset()
+            wake_buf.clear()
+            rec.start()
+
+            # Record until trailing silence (or the hard cap) instead of a
+            # fixed window — long commands no longer get clipped. Durations
+            # are tracked in audio time (sum of chunk lengths), not wall
+            # time, so a backlogged or stalled stream can't skew the endpoint.
+            chunks = []
+            silence_s = 0.0
+            audio_s = 0.0
+            started = time.time()
+            while audio_s < MAX_UTTERANCE_S:
+                if time.time() - started > MAX_UTTERANCE_S * 2:
+                    break  # stream stalled — don't hang here forever
+                try:
+                    c = rec.q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                chunks.append(c)
+                chunk_s = (len(c) // 2) / SAMPLE_RATE
+                audio_s += chunk_s
+                rms = float(np.sqrt(np.mean(
+                    np.frombuffer(c, dtype=np.int16).astype(np.float64) ** 2)))
+                silence_s = silence_s + chunk_s if rms < SILENCE_RMS else 0.0
+                if silence_s >= SILENCE_END_S and audio_s > 1.0:
+                    break
+            rec.stop()
+            rec.drain()  # discard any leftovers past the endpoint
+
+            if chunks:
+                for c in chunks:
+                    hub.send_audio_chunk(c)
+                hub.end_utterance()
+                hub.audio_done.wait(timeout=60)
+                hub.audio_done.clear()
+
+            while not wake_q.empty():
+                try: wake_q.get_nowait()
+                except Exception: break
+            rec.tap = wake_q.put    # resume wake feed
+            print(f"[WAKE] Listening for '{WAKE_WORD}'…")
     except KeyboardInterrupt:
-        wake_stream.stop()
+        rec.tap = None
         print("\nbye")
 
 

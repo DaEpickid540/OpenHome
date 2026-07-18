@@ -215,10 +215,10 @@ def _on_message(client, userdata, msg):
 
 
 # ── ZIGBEE CONTROL (hub → Z2M → device) ──────────────────
-def send_zigbee_command(friendly_name: str, command: dict):
-    """Send a command to a Zigbee device via Z2M MQTT."""
+def send_zigbee_command(friendly_name: str, command: dict) -> bool:
+    """Send a command to a Zigbee device via Z2M MQTT. Returns True if published."""
     if not _HAS_MQTT or not hasattr(send_zigbee_command, "_client"):
-        return
+        return False
     topic = f"{Z2M_BASE}/{friendly_name}/set"
     # Map openHome state format to Z2M format
     z2m_cmd = {}
@@ -230,7 +230,8 @@ def send_zigbee_command(friendly_name: str, command: dict):
         # Convert hex to RGB
         h = command["color"].lstrip("#")
         z2m_cmd["color"] = {"r": int(h[0:2],16), "g": int(h[2:4],16), "b": int(h[4:6],16)}
-    send_zigbee_command._client.publish(topic, json.dumps(z2m_cmd))
+    info = send_zigbee_command._client.publish(topic, json.dumps(z2m_cmd))
+    return info.rc == 0  # MQTT_ERR_SUCCESS
 
 
 # ── STARTUP ───────────────────────────────────────────────
@@ -241,7 +242,11 @@ async def start_zigbee_bridge():
         return
 
     _loop = asyncio.get_event_loop()
-    client = mqtt.Client()
+    # paho-mqtt 2.x requires an explicit callback API version; 1.x has no such arg
+    try:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
+    except AttributeError:
+        client = mqtt.Client()
     client.on_connect = _on_connect
     client.on_message = _on_message
     send_zigbee_command._client = client
